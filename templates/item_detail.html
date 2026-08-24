@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name or item.id }}{% endblock %}
+{% block content %}
+
+<a href="{{ url_for('index') }}" class="back-link">{{ t('back_to_catalog') }}</a>
+
+<section class="detail-wrap">
+  <div class="detail-photo">
+    <img src="{{ r2_url(item.image_key) }}" alt="{{ item.name or item.id }}">
+  </div>
+  <div class="detail-info">
+    <div class="detail-id">{{ t('item_id_label') }}: <span>{{ item.id }}</span></div>
+    <h1 class="detail-name">{{ item.name or t('untitled_item') }}</h1>
+    {% if item.category %}
+      <div class="detail-row"><span class="detail-key">{{ t('category_label') }}</span><span>{{ item.category }}</span></div>
+    {% endif %}
+    <div class="detail-row"><span class="detail-key">{{ t('added_label') }}</span><span>{{ item.date_added.strftime('%Y-%m-%d') }}</span></div>
+
+    {% if is_admin %}
+    <div class="detail-actions">
+      <a href="{{ url_for('edit_item', item_id=item.id) }}" class="edit-btn-lg">{{ t('edit_btn') }}</a>
+      <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}" onsubmit="return confirm('{{ item.id }}');" class="inline-form">
+        <button type="submit" class="remove-btn-lg">{{ t('remove_btn') }}</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}

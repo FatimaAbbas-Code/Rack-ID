@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_add_item') }}{% endblock %}
+{% block content %}
+
+<section class="form-wrap">
+  <h1>{{ t('upload_title') }}</h1>
+  <p class="form-sub">{{ t('upload_sub') }}</p>
+
+  <form method="post" enctype="multipart/form-data" class="item-form">
+    <label class="field">
+      <span>{{ t('field_id') }} <em>{{ t('field_id_hint') }}</em></span>
+      <input type="text" name="item_id" required placeholder="e.g. 4521" autofocus>
+    </label>
+
+    <label class="field">
+      <span>{{ t('field_name') }} <em>{{ t('field_optional') }}</em></span>
+      <input type="text" name="name" placeholder="e.g. Navy denim jacket">
+    </label>
+
+    <label class="field">
+      <span>{{ t('field_category') }} <em>{{ t('field_optional') }}</em></span>
+      <input type="text" name="category" placeholder="e.g. Jackets">
+    </label>
+
+    <label class="field file-field">
+      <span>{{ t('field_photo') }}</span>
+      <input type="file" name="image" accept="image/png, image/jpeg, image/webp" required id="fileInput">
+      <div class="preview-box" id="previewBox">{{ t('no_photo_selected') }}</div>
+    </label>
+
+    <button type="submit" class="submit-btn">{{ t('submit_add') }}</button>
+  </form>
+</section>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const previewBox = document.getElementById('previewBox');
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) { previewBox.textContent = '{{ t("no_photo_selected") }}'; previewBox.style.backgroundImage = ''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewBox.style.backgroundImage = `url(${e.target.result})`;
+      previewBox.textContent = '';
+    };
+    reader.readAsDataURL(file);
+  });
+</script>
+
+{% endblock %}

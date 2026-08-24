@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login_title') }}{% endblock %}
+{% block content %}
+
+<section class="form-wrap narrow">
+  <h1>{{ t('login_title') }}</h1>
+  <p class="form-sub">{{ t('login_sub') }}</p>
+
+  <form method="post" class="item-form">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">
+      <span>{{ t('field_password') }}</span>
+      <input type="password" name="password" required autofocus>
+    </label>
+    <button type="submit" class="submit-btn">{{ t('login_btn') }}</button>
+  </form>
+</section>
+
+{% endblock %}

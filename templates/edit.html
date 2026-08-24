@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ t('edit_title') }}{% endblock %}
+{% block content %}
+
+<section class="form-wrap">
+  <h1>{{ t('edit_title') }}</h1>
+  <p class="form-sub">{{ t('edit_sub') }}</p>
+
+  <form method="post" enctype="multipart/form-data" class="item-form">
+    <label class="field">
+      <span>{{ t('field_id') }}</span>
+      <input type="text" value="{{ item.id }}" disabled>
+    </label>
+
+    <label class="field">
+      <span>{{ t('field_name') }} <em>{{ t('field_optional') }}</em></span>
+      <input type="text" name="name" value="{{ item.name or '' }}" placeholder="e.g. Navy denim jacket">
+    </label>
+
+    <label class="field">
+      <span>{{ t('field_category') }} <em>{{ t('field_optional') }}</em></span>
+      <input type="text" name="category" value="{{ item.category or '' }}" placeholder="e.g. Jackets">
+    </label>
+
+    <div class="field">
+      <span>{{ t('field_photo') }}</span>
+      <img class="current-photo" src="{{ r2_url(item.thumb_key) }}" alt="{{ item.name }}">
+    </div>
+
+    <label class="field file-field">
+      <span>{{ t('field_photo') }} <em>{{ t('field_optional') }}</em></span>
+      <input type="file" name="image" accept="image/png, image/jpeg, image/webp" id="fileInput">
+      <div class="preview-box" id="previewBox">{{ t('no_photo_selected') }}</div>
+    </label>
+
+    <button type="submit" class="submit-btn">{{ t('submit_edit') }}</button>
+  </form>
+</section>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const previewBox = document.getElementById('previewBox');
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) { previewBox.textContent = '{{ t("no_photo_selected") }}'; previewBox.style.backgroundImage = ''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewBox.style.backgroundImage = `url(${e.target.result})`;
+      previewBox.textContent = '';
+    };
+    reader.readAsDataURL(file);
+  });
+</script>
+
+{% endblock %}

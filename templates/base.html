@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}" dir="{{ 'rtl' if is_rtl else 'ltr' }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ t('nav_catalog') }}{% endblock %} · {{ t('app_name') }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Cairo:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="{{ 'rtl' if is_rtl else '' }}">
+<header class="topbar">
+  <a class="brand" href="{{ url_for('index') }}">
+    <span class="brand-mark">R&amp;ID</span>
+    <span class="brand-name">{{ t('app_name') }}</span>
+  </a>
+  <nav class="topnav">
+    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">{{ t('nav_catalog') }}</a>
+    {% if is_admin %}
+      <a href="{{ url_for('upload') }}" class="{{ 'active' if request.endpoint == 'upload' else '' }}">{{ t('nav_add_item') }}</a>
+      <form method="post" action="{{ url_for('logout') }}" class="inline-form">
+        <button type="submit" class="link-btn">{{ t('nav_logout') }}</button>
+      </form>
+    {% else %}
+      <a href="{{ url_for('login', next=request.path) }}">{{ t('nav_login') }}</a>
+    {% endif %}
+    <span class="lang-switch">
+      <a href="{{ url_for('set_lang', code='en') }}" class="{{ 'active' if current_lang == 'en' else '' }}">EN</a>
+      <span class="lang-sep">/</span>
+      <a href="{{ url_for('set_lang', code='ar') }}" class="{{ 'active' if current_lang == 'ar' else '' }}">AR</a>
+    </span>
+  </nav>
+</header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flash-stack">
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="foot-note">{{ t('app_name') }} — internal catalog tool</footer>
+</body>
+</html>
