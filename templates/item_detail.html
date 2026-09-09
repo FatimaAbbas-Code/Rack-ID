@@ -9,8 +9,8 @@
     <div class="detail-photo">
       <img id="galleryMain" src="{{ r2_url(images[0].image_key if images else item.image_key) }}" alt="{{ item.name or item.id }}">
       {% if images and images|length > 1 %}
-      <button type="button" class="gallery-nav gallery-prev" aria-label="Previous photo">&#8249;</button>
-      <button type="button" class="gallery-nav gallery-next" aria-label="Next photo">&#8250;</button>
+      <button type="button" class="gallery-nav gallery-prev" aria-label="Previous photo"></button>
+      <button type="button" class="gallery-nav gallery-next" aria-label="Next photo"></button>
       <span class="gallery-counter"><span id="galleryIndex">1</span>&nbsp;/&nbsp;{{ images|length }}</span>
       {% endif %}
     </div>
