@@ -28,7 +28,7 @@ R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', '')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL', '').rstrip('/')
 
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme123')
-VIEWER_PASSWORD = os.environ.get('VIEWER_PASSWORD', '0000')
+VIEWER_PASSWORD = os.environ.get('VIEWER_PASSWORD', 'change-me')
 SECRET_KEY = os.environ.get('SECRET_KEY', 'change-this-secret-key-before-deploying')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}

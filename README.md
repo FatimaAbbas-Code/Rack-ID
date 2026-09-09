@@ -69,8 +69,8 @@ You now have everything needed: `DATABASE_URL`, `R2_ACCOUNT_ID`,
 
 1. Copy `.env.example` to a new file named `.env` in the same folder.
 2. Fill in the values you collected above, plus set your own
-   `ADMIN_PASSWORD`, a `VIEWER_PASSWORD` (the one everyone needs just to
-   view — e.g. `0000`), and a random `SECRET_KEY`.
+   `ADMIN_PASSWORD`, a `VIEWER_PASSWORD` (the password everyone needs just
+   to view the catalog), and a random `SECRET_KEY`.
 3. Then:
 
 ```bash
@@ -131,8 +131,9 @@ only if the store grows well beyond that.
 
 - Set `ADMIN_PASSWORD` to something only you and the store owner know.
 - Set `VIEWER_PASSWORD` to the password staff use just to view the
-  catalog. Anyone without it only ever sees the sign-in screen. Change it
-  from the `0000` default before sharing the link.
+  catalog. Anyone without it only ever sees the sign-in screen. The code
+  ships with a placeholder default — always set a real one via the
+  environment (locally in `.env`, on the host in its env vars).
 - Set `SECRET_KEY` to a long random string — e.g. output from
   `python -c "import secrets; print(secrets.token_hex(32))"`.
 - These are two shared passwords, not individual staff accounts — fine
