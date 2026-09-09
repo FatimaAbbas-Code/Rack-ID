@@ -435,6 +435,17 @@ TRANSLATIONS = {
         'save_image_btn': 'Save as image',
         'export_label': 'Export catalog',
         'export_zip_label': 'ZIP + photos',
+        'import_link': 'Import / restore',
+        'import_title': 'Import / restore',
+        'import_sub': 'Upload a JSON or ZIP export. Items whose ID is already in the catalog are skipped — nothing existing is changed.',
+        'import_field': 'Export file (.json or .zip)',
+        'import_btn': 'Import',
+        'import_latest_btn': 'Restore the latest automatic backup',
+        'import_no_file': 'Choose a file to import.',
+        'import_bad_type': 'Upload a .json or .zip export file.',
+        'import_failed': 'Import failed.',
+        'import_done': 'Imported {added} item(s) and {photos} photo(s). Skipped {skipped} already in the catalog.',
+        'import_nolatest': 'No automatic backup found yet.',
         'photos_word': 'photos',
         'item_not_found': 'Item not found.',
         'upload_title': 'Add a new item',
@@ -502,6 +513,17 @@ TRANSLATIONS = {
         'save_image_btn': 'حفظ كصورة',
         'export_label': 'تصدير الكتالوج',
         'export_zip_label': 'ZIP مع الصور',
+        'import_link': 'استيراد / استعادة',
+        'import_title': 'استيراد / استعادة',
+        'import_sub': 'ارفع ملف تصدير بصيغة JSON أو ZIP. يتم تجاهل العناصر التي رقمها التعريفي موجود مسبقًا — ولا يتغيّر أي شيء قائم.',
+        'import_field': 'ملف التصدير (.json أو .zip)',
+        'import_btn': 'استيراد',
+        'import_latest_btn': 'استعادة آخر نسخة احتياطية تلقائية',
+        'import_no_file': 'اختر ملفًا للاستيراد.',
+        'import_bad_type': 'ارفع ملف تصدير بصيغة .json أو .zip.',
+        'import_failed': 'فشل الاستيراد.',
+        'import_done': 'تم استيراد {added} عنصرًا و{photos} صورة. وتم تجاهل {skipped} موجودًا مسبقًا.',
+        'import_nolatest': 'لا توجد نسخة احتياطية تلقائية بعد.',
         'photos_word': 'صور',
         'item_not_found': 'العنصر غير موجود.',
         'upload_title': 'إضافة عنصر جديد',
@@ -708,13 +730,13 @@ def export_csv():
     })
 
 
-@app.route('/export/items.json')
-@login_required
-def export_json():
+def build_backup_payload():
+    """The JSON snapshot used by both the export button and backup.py."""
     items = all_items_with_images()
-    payload = {
+    return {
         'exported_at': datetime.now(timezone.utc).isoformat(),
         'count': len(items),
+        'r2_public_url': R2_PUBLIC_URL,
         'items': [{
             'id': it['id'],
             'name': it['name'],
@@ -723,8 +745,13 @@ def export_json():
             'images': it['images'],
         } for it in items],
     }
+
+
+@app.route('/export/items.json')
+@login_required
+def export_json():
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
-    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    body = json.dumps(build_backup_payload(), ensure_ascii=False, indent=2)
     return Response(body, mimetype='application/json; charset=utf-8', headers={
         'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.json"',
     })
@@ -810,6 +837,188 @@ def export_zip():
     return Response(mem.getvalue(), mimetype='application/zip', headers={
         'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.zip"',
     })
+
+
+# ---------------------------------------------------------------------------
+# Import / restore (admin only) — adds items whose ID is not already present
+# ---------------------------------------------------------------------------
+def _key_from_url(url):
+    if not url:
+        return None
+    prefix = R2_PUBLIC_URL + '/'
+    if R2_PUBLIC_URL and url.startswith(prefix):
+        return url[len(prefix):]
+    parts = url.split('/', 3)
+    return parts[3] if len(parts) == 4 else None
+
+
+def _parse_dt(value):
+    if value:
+        try:
+            return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def _existing_ids(cur):
+    cur.execute('SELECT id FROM items')
+    return {row[0] for row in cur.fetchall()}
+
+
+def import_from_json(raw):
+    """Restore item + image rows from a JSON export. Image keys are derived
+    from the stored URLs, so the R2 objects must still exist."""
+    data = json.loads(raw.decode('utf-8'))
+    records = data.get('items') if isinstance(data, dict) else data
+    records = records or []
+    added = photos = skipped = 0
+    conn = get_db()
+    cur = conn.cursor()
+    have = _existing_ids(cur)
+    for rec in records:
+        iid = str(rec.get('id', '')).strip()
+        if not iid or iid in have:
+            skipped += 1
+            continue
+        parsed = []
+        for im in (rec.get('images') or []):
+            ik = _key_from_url(im.get('image_url'))
+            if not ik:
+                continue
+            tk = _key_from_url(im.get('thumb_url')) or ik
+            parsed.append((im.get('position', len(parsed)), ik, tk))
+        if not parsed:
+            skipped += 1
+            continue
+        parsed.sort(key=lambda x: x[0])
+        added_at = _parse_dt(rec.get('date_added'))
+        cur.execute(
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added) '
+            'VALUES (%s, %s, %s, %s, %s, %s)',
+            (iid, rec.get('name') or '', rec.get('category') or '',
+             parsed[0][1], parsed[0][2], added_at)
+        )
+        for pos, ik, tk in parsed:
+            cur.execute(
+                'INSERT INTO item_images (id, item_id, image_key, thumb_key, position, date_added) '
+                'VALUES (%s, %s, %s, %s, %s, %s)',
+                (uuid.uuid4().hex, iid, ik, tk, pos, added_at)
+            )
+        have.add(iid)
+        added += 1
+        photos += len(parsed)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return added, photos, skipped
+
+
+def import_from_zip(raw):
+    """Full restore from a ZIP export: re-upload every photo file to R2 and
+    recreate the rows."""
+    zf = zipfile.ZipFile(io.BytesIO(raw))
+    csv_name = next((n for n in zf.namelist() if n.lower().endswith('.csv')), None)
+    if not csv_name:
+        raise ValueError('no catalog.csv inside the zip')
+    rows = list(csv.DictReader(io.StringIO(zf.read(csv_name).decode('utf-8-sig'))))
+    added = photos = skipped = 0
+    s3 = get_r2_client()
+    conn = get_db()
+    cur = conn.cursor()
+    have = _existing_ids(cur)
+    for row in rows:
+        iid = (row.get('id') or '').strip()
+        if not iid or iid in have:
+            skipped += 1
+            continue
+        files = [x.strip() for x in (row.get('photo_files') or '').split('|') if x.strip()]
+        saved = []
+        for fname in files:
+            try:
+                body = zf.read(f'images/{fname}')
+            except KeyError:
+                continue
+            ext = fname.rsplit('.', 1)[-1].lower() if '.' in fname else 'jpg'
+            uid = uuid.uuid4().hex
+            image_key, thumb_key = f'items/{uid}.{ext}', f'items/thumbs/{uid}.jpg'
+            s3.put_object(Bucket=R2_BUCKET_NAME, Key=image_key, Body=body,
+                          ContentType=f'image/{ext}')
+            try:
+                s3.put_object(Bucket=R2_BUCKET_NAME, Key=thumb_key,
+                              Body=make_thumbnail_bytes(body), ContentType='image/jpeg')
+            except Exception:
+                thumb_key = image_key
+            saved.append((image_key, thumb_key))
+        if not saved:
+            skipped += 1
+            continue
+        added_at = _parse_dt(row.get('date_added'))
+        cur.execute(
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added) '
+            'VALUES (%s, %s, %s, %s, %s, %s)',
+            (iid, row.get('name') or '', row.get('category') or '',
+             saved[0][0], saved[0][1], added_at)
+        )
+        for pos, (ik, tk) in enumerate(saved):
+            cur.execute(
+                'INSERT INTO item_images (id, item_id, image_key, thumb_key, position, date_added) '
+                'VALUES (%s, %s, %s, %s, %s, %s)',
+                (uuid.uuid4().hex, iid, ik, tk, pos, added_at)
+            )
+        have.add(iid)
+        added += 1
+        photos += len(saved)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return added, photos, skipped
+
+
+def _flash_import_result(added, photos, skipped):
+    flash(t('import_done').format(added=added, photos=photos, skipped=skipped), 'success')
+
+
+@app.route('/import', methods=['GET', 'POST'])
+@login_required
+def import_data():
+    if request.method == 'POST':
+        f = request.files.get('file')
+        if not f or not f.filename:
+            flash(t('import_no_file'), 'error')
+            return redirect(url_for('import_data'))
+        name = f.filename.lower()
+        try:
+            if name.endswith('.zip'):
+                result = import_from_zip(f.read())
+            elif name.endswith('.json'):
+                result = import_from_json(f.read())
+            else:
+                flash(t('import_bad_type'), 'error')
+                return redirect(url_for('import_data'))
+        except Exception as exc:
+            flash(f"{t('import_failed')} ({exc})", 'error')
+            return redirect(url_for('import_data'))
+        _flash_import_result(*result)
+        return redirect(url_for('index'))
+    return render_template('import.html')
+
+
+@app.route('/import/latest', methods=['POST'])
+@login_required
+def import_latest():
+    try:
+        raw = r2_get_bytes('backups/latest.json')
+    except Exception:
+        flash(t('import_nolatest'), 'error')
+        return redirect(url_for('import_data'))
+    try:
+        result = import_from_json(raw)
+    except Exception as exc:
+        flash(f"{t('import_failed')} ({exc})", 'error')
+        return redirect(url_for('import_data'))
+    _flash_import_result(*result)
+    return redirect(url_for('index'))
 
 
 # ---------------------------------------------------------------------------

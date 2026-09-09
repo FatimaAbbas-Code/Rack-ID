@@ -228,6 +228,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   font-family: 'IBM Plex Mono', monospace;
 }
 .export-bar a:hover { border-color: var(--denim); color: var(--denim); text-decoration: none; }
+.export-bar .import-link { border-style: dashed; }
 
 /* ---------- Gallery grid ---------- */
 .grid {

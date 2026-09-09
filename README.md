@@ -131,6 +131,30 @@ an `item_images` table and copies each existing product's current photo
 into it as that product's first image — nothing is lost, and the step is
 safe to run repeatedly.
 
+## Backups and restore
+
+**Manual:** on the catalog page (as admin) use **Export → JSON** (catalog
+data) or **ZIP + photos** (data plus every image file). Keep those
+somewhere safe — Google Drive, etc.
+
+**Automatic:** `backup.py` writes a JSON snapshot to R2 under `backups/`
+(`backups/latest.json` plus timestamped copies, keeping the newest 30).
+To run it on a schedule, add a **Cron Job** on Render pointing at this
+repo:
+
+- Build command: `pip install -r requirements.txt`
+- Command: `python backup.py`
+- Schedule: e.g. `0 2 * * *` (daily, 02:00 UTC)
+- Environment: the same `DATABASE_URL` and `R2_*` variables as the web
+  service.
+
+**Restore:** on the catalog page use **Import / restore**. Upload a JSON
+or ZIP export, or click **Restore the latest automatic backup** (reads
+`backups/latest.json`). Import only *adds* items whose ID isn't already
+in the catalog — it never changes or deletes anything that's already
+there. A JSON restore recreates the catalog rows and expects the images
+to still be in R2; a ZIP restore also re-uploads the image files.
+
 ## A note on scale
 
 Supabase's free tier and R2's free tier both comfortably handle a

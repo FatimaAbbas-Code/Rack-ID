@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ t('import_title') }}{% endblock %}
+{% block content %}
+
+<section class="form-wrap">
+  <h1>{{ t('import_title') }}</h1>
+  <p class="form-sub">{{ t('import_sub') }}</p>
+
+  <form method="post" enctype="multipart/form-data" class="item-form">
+    <label class="field file-field">
+      <span>{{ t('import_field') }}</span>
+      <input type="file" name="file" accept=".json,.zip,application/json,application/zip" required>
+    </label>
+    <button type="submit" class="submit-btn">{{ t('import_btn') }}</button>
+  </form>
+
+  <form method="post" action="{{ url_for('import_latest') }}" class="item-form" style="margin-top: 18px;">
+    <button type="submit" class="tool-btn">{{ t('import_latest_btn') }}</button>
+  </form>
+</section>
+
+{% endblock %}
