@@ -316,7 +316,7 @@ def _shape(text):
         return text, False
     if arabic_reshaper and get_display:
         try:
-            return get_display(arabic_reshaper.reshape(text)), True
+            return get_display(arabic_reshaper.reshape(text), base_dir='R'), True
         except Exception:
             return text, True
     return text, True
@@ -519,14 +519,17 @@ TRANSLATIONS = {
 }
 
 
+DEFAULT_LANG = os.environ.get('DEFAULT_LANG', 'ar')
+
+
 def t(key):
-    lang = session.get('lang', 'en')
+    lang = session.get('lang', DEFAULT_LANG)
     return TRANSLATIONS.get(lang, TRANSLATIONS['en']).get(key, key)
 
 
 @app.context_processor
 def inject_globals():
-    lang = session.get('lang', 'en')
+    lang = session.get('lang', DEFAULT_LANG)
     return dict(
         t=t,
         current_lang=lang,
