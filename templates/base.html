@@ -21,6 +21,7 @@
     {% endif %}
     {% if is_admin %}
       <a href="{{ url_for('upload') }}" class="{{ 'active' if request.endpoint == 'upload' else '' }}">{{ t('nav_add_item') }}</a>
+      <a href="{{ url_for('manage') }}" class="{{ 'active' if request.endpoint == 'manage' else '' }}">{{ t('nav_manage') }}</a>
     {% endif %}
     {% if is_viewer %}
       <form method="post" action="{{ url_for('logout') }}" class="inline-form">

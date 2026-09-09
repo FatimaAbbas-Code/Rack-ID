@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_manage') }}{% endblock %}
+{% block content %}
+
+<section class="manage-wrap">
+  <h1>{{ t('manage_title') }}</h1>
+
+  <div class="manage-grid">
+    <div class="manage-card">
+      <h2>{{ t('manage_items') }}</h2>
+      <p class="manage-count">{{ total }} {{ t('item_count_singular') if total == 1 else t('items_count') }}</p>
+      <a class="manage-action" href="{{ url_for('upload') }}">{{ t('nav_add_item') }}</a>
+    </div>
+
+    <div class="manage-card">
+      <h2>{{ t('export_label') }}</h2>
+      <div class="manage-links">
+        <a href="{{ url_for('export_xlsx') }}">Excel (.xlsx)</a>
+        <a href="{{ url_for('export_zip') }}">{{ t('export_zip_label') }}</a>
+        <a href="{{ url_for('export_csv') }}">CSV</a>
+        <a href="{{ url_for('export_json') }}">JSON</a>
+      </div>
+    </div>
+
+    <div class="manage-card">
+      <h2>{{ t('import_title') }}</h2>
+      <p class="manage-hint">{{ t('manage_import_hint') }}</p>
+      <a class="manage-action" href="{{ url_for('import_data') }}">{{ t('import_link') }}</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

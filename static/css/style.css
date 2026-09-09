@@ -207,28 +207,51 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   border-radius: 999px;
   white-space: nowrap;
 }
-.count-side {
+/* ---------- Manage page ---------- */
+.manage-wrap { max-width: 820px; margin: 0 auto; }
+.manage-wrap h1 {
+  font-family: 'Archivo Expanded', sans-serif;
+  font-weight: 800;
+  font-size: 26px;
+  margin-bottom: 22px;
+}
+.manage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.manage-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
-.export-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.export-bar a {
-  border: 1px solid var(--line);
-  padding: 4px 9px;
-  border-radius: var(--radius);
-  color: var(--ink-soft);
+.manage-card h2 {
   font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin: 0;
 }
-.export-bar a:hover { border-color: var(--denim); color: var(--denim); text-decoration: none; }
-.export-bar .import-link { border-style: dashed; }
+.manage-count { font-size: 20px; font-weight: 600; margin: 0; }
+.manage-hint { font-size: 13px; color: var(--ink-soft); margin: 0; }
+.manage-links { display: flex; flex-direction: column; gap: 6px; }
+.manage-links a { font-size: 14px; }
+.manage-action {
+  align-self: flex-start;
+  margin-top: auto;
+  padding: 8px 14px;
+  background: var(--denim);
+  color: #fff;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+}
+.manage-action:hover { background: var(--denim-dark); text-decoration: none; }
 
 /* ---------- Gallery grid ---------- */
 .grid {
@@ -608,7 +631,6 @@ body.rtl .brand { flex-direction: row; }
   .search-form { width: 100%; }
   .search-row { width: 100%; }
   .search-row input { min-width: 0; flex: 1; }
-  .count-side { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
 
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
   .hangtag { left: 6px; }

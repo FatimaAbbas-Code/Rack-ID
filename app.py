@@ -411,6 +411,7 @@ TRANSLATIONS = {
         'app_name': 'Rack & ID',
         'nav_catalog': 'Catalog',
         'nav_add_item': 'Add item',
+        'nav_manage': 'Manage',
         'nav_login': 'Sign in',
         'nav_logout': 'Log out',
         'search_label': 'Find by ID or name',
@@ -433,6 +434,9 @@ TRANSLATIONS = {
         'added_label': 'Added',
         'print_btn': 'Print',
         'save_image_btn': 'Save as image',
+        'manage_title': 'Manage catalog',
+        'manage_items': 'Items',
+        'manage_import_hint': 'Restore from a JSON or ZIP export.',
         'export_label': 'Export catalog',
         'export_zip_label': 'ZIP + photos',
         'import_link': 'Import / restore',
@@ -489,6 +493,7 @@ TRANSLATIONS = {
         'app_name': 'رفّ آي دي',
         'nav_catalog': 'الكتالوج',
         'nav_add_item': 'إضافة عنصر',
+        'nav_manage': 'الإدارة',
         'nav_login': 'تسجيل الدخول',
         'nav_logout': 'تسجيل الخروج',
         'search_label': 'ابحث بالرقم التعريفي أو الاسم',
@@ -511,6 +516,9 @@ TRANSLATIONS = {
         'added_label': 'تمت الإضافة',
         'print_btn': 'طباعة',
         'save_image_btn': 'حفظ كصورة',
+        'manage_title': 'إدارة الكتالوج',
+        'manage_items': 'العناصر',
+        'manage_import_hint': 'استعادة من ملف تصدير JSON أو ZIP.',
         'export_label': 'تصدير الكتالوج',
         'export_zip_label': 'ZIP مع الصور',
         'import_link': 'استيراد / استعادة',
@@ -1024,6 +1032,18 @@ def import_latest():
 # ---------------------------------------------------------------------------
 # Routes — admin only
 # ---------------------------------------------------------------------------
+@app.route('/manage')
+@login_required
+def manage():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM items')
+    total = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return render_template('manage.html', total=total)
+
+
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
