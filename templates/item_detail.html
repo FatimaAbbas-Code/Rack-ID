@@ -8,6 +8,11 @@
   <div class="detail-media">
     <div class="detail-photo">
       <img id="galleryMain" src="{{ r2_url(images[0].image_key if images else item.image_key) }}" alt="{{ item.name or item.id }}">
+      {% if images and images|length > 1 %}
+      <button type="button" class="gallery-nav gallery-prev" aria-label="Previous photo">&#8249;</button>
+      <button type="button" class="gallery-nav gallery-next" aria-label="Next photo">&#8250;</button>
+      <span class="gallery-counter"><span id="galleryIndex">1</span>&nbsp;/&nbsp;{{ images|length }}</span>
+      {% endif %}
     </div>
     {% if images and images|length > 1 %}
     <div class="gallery-thumbs">
@@ -27,6 +32,11 @@
     {% endif %}
     <div class="detail-row"><span class="detail-key">{{ t('added_label') }}</span><span>{{ item.date_added.strftime('%Y-%m-%d') }}</span></div>
 
+    <div class="detail-tools">
+      <button type="button" class="tool-btn" id="printBtn">{{ t('print_btn') }}</button>
+      <a class="tool-btn" href="{{ url_for('item_card', item_id=item.id) }}">{{ t('save_image_btn') }}</a>
+    </div>
+
     {% if is_admin %}
     <div class="detail-actions">
       <a href="{{ url_for('edit_item', item_id=item.id) }}" class="edit-btn-lg">{{ t('edit_btn') }}</a>
@@ -38,16 +48,47 @@
   </div>
 </section>
 
+<script>
+  document.getElementById('printBtn').addEventListener('click', function () { window.print(); });
+</script>
+
 {% if images and images|length > 1 %}
 <script>
-  const galleryMain = document.getElementById('galleryMain');
-  document.querySelectorAll('.gallery-thumb').forEach(btn => {
-    btn.addEventListener('click', () => {
-      galleryMain.src = btn.dataset.full;
-      document.querySelectorAll('.gallery-thumb').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
+(function () {
+  var main = document.getElementById('galleryMain');
+  var label = document.getElementById('galleryIndex');
+  var thumbs = Array.prototype.slice.call(document.querySelectorAll('.gallery-thumb'));
+  var fulls = thumbs.map(function (b) { return b.dataset.full; });
+  var i = 0;
+
+  function show(n) {
+    i = (n % fulls.length + fulls.length) % fulls.length;
+    main.src = fulls[i];
+    thumbs.forEach(function (b, k) { b.classList.toggle('active', k === i); });
+    if (label) label.textContent = i + 1;
+  }
+
+  thumbs.forEach(function (b, k) { b.addEventListener('click', function () { show(k); }); });
+
+  var prev = document.querySelector('.gallery-prev');
+  var next = document.querySelector('.gallery-next');
+  if (prev) prev.addEventListener('click', function () { show(i - 1); });
+  if (next) next.addEventListener('click', function () { show(i + 1); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft') show(i - 1);
+    else if (e.key === 'ArrowRight') show(i + 1);
   });
+
+  var startX = null;
+  main.addEventListener('touchstart', function (e) { startX = e.changedTouches[0].clientX; }, { passive: true });
+  main.addEventListener('touchend', function (e) {
+    if (startX === null) return;
+    var dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 40) show(dx < 0 ? i + 1 : i - 1);
+    startX = null;
+  }, { passive: true });
+})();
 </script>
 {% endif %}
 

@@ -39,9 +39,12 @@
 
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
-    <div class="flash-stack">
+    <div class="toast-stack" id="toastStack">
       {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">{{ message }}</div>
+        <div class="toast toast-{{ category }}" role="status">
+          <span class="toast-msg">{{ message }}</span>
+          <button type="button" class="toast-x" aria-label="Dismiss">&times;</button>
+        </div>
       {% endfor %}
     </div>
   {% endif %}
@@ -52,5 +55,22 @@
 </main>
 
 <footer class="foot-note">{{ t('app_name') }} — internal catalog tool</footer>
+
+<script>
+(function () {
+  var stack = document.getElementById('toastStack');
+  if (!stack) return;
+  stack.querySelectorAll('.toast').forEach(function (el) {
+    function dismiss() {
+      el.classList.add('toast-out');
+      setTimeout(function () { el.remove(); }, 300);
+    }
+    var x = el.querySelector('.toast-x');
+    if (x) x.addEventListener('click', dismiss);
+    // Errors stay until dismissed; other messages fade on their own.
+    if (!el.classList.contains('toast-error')) setTimeout(dismiss, 4000);
+  });
+})();
+</script>
 </body>
 </html>

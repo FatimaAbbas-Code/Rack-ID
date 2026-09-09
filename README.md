@@ -19,11 +19,20 @@ nothing important lives on the app server's own disk.
   admin (separate password — add, edit, delete). Nobody sees the catalog
   without a password.
 - **Catalog page** — responsive, searchable gallery. Search matches ID,
-  name, or category. Click any photo to see it full-size.
+  name, or category. Click any photo to see it full-size. Cards with more
+  than one photo show a count badge and preview the other photos on
+  hover.
 - **Add / Edit item** (admin only) — upload one or more photos with the
   item's ID from the store's existing system, plus optional
   name/category. Editing lets you change name/category, remove photos,
   and add more. The first photo is the one shown on the catalog grid.
+- **Item page** — photo gallery with arrows, thumbnails, keyboard and
+  swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
+  and to **Save as image** — a shareable product card (photo + ID +
+  name), generated server-side, Arabic text included.
+- **Export** (admin only) — download the whole catalog as **CSV** (opens
+  in Excel) or **JSON** from the catalog page. The JSON doubles as a
+  backup.
 - **Language switch** — EN/AR toggle in the nav, with full right-to-left
   layout for Arabic.
 - Thumbnails generated automatically for fast loading even with

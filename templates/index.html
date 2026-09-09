@@ -17,19 +17,31 @@
       {% endif %}
     </div>
   </form>
-  <div class="count-pill">{{ total }} {{ t('item_count_singular') if total == 1 else t('items_count') }}</div>
+  <div class="count-side">
+    <div class="count-pill">{{ total }} {{ t('item_count_singular') if total == 1 else t('items_count') }}</div>
+    {% if is_admin %}
+    <div class="export-bar">
+      <span>{{ t('export_label') }}:</span>
+      <a href="{{ url_for('export_csv') }}">CSV</a>
+      <a href="{{ url_for('export_json') }}">JSON</a>
+    </div>
+    {% endif %}
+  </div>
 </section>
 
 {% if items %}
 <div class="grid" id="grid">
   {% for item in items %}
+  {% set extra = item.thumb_urls|length > 1 %}
   <article class="tag-card">
-    <a class="tag-photo" href="{{ url_for('item_detail', item_id=item.id) }}" title="{{ t('view_full') }}">
+    <a class="tag-photo{{ ' has-more' if extra else '' }}" href="{{ url_for('item_detail', item_id=item.id) }}" title="{{ t('view_full') }}"
+       {% if extra %}data-thumbs="{{ item.thumb_urls|join('|') }}"{% endif %}>
       <img src="{{ r2_url(item.thumb_key) }}" alt="{{ item.name or item.id }}" loading="lazy">
       <div class="hangtag">
         <span class="hangtag-hole"></span>
         <span class="hangtag-id">{{ item.id }}</span>
       </div>
+      {% if extra %}<span class="photo-count" aria-label="{{ item.thumb_urls|length }} {{ t('photos_word') }}">{{ item.thumb_urls|length }}</span>{% endif %}
     </a>
     <div class="tag-info">
       <div class="tag-name">{{ item.name or t('untitled_item') }}</div>
@@ -57,5 +69,31 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+(function () {
+  // Desktop hover: peek through a product's other photos. No effect on touch.
+  document.querySelectorAll('.tag-photo.has-more').forEach(function (a) {
+    var img = a.querySelector('img');
+    var cover = img.getAttribute('src');
+    var thumbs = (a.dataset.thumbs || '').split('|').filter(Boolean);
+    if (thumbs.length < 2) return;
+    var timer = null, k = 0, warmed = false;
+
+    a.addEventListener('mouseenter', function () {
+      if (!warmed) { thumbs.forEach(function (u) { var p = new Image(); p.src = u; }); warmed = true; }
+      if (timer) return;
+      k = 0;
+      timer = setInterval(function () {
+        k = (k + 1) % thumbs.length;
+        img.src = thumbs[k];
+      }, 650);
+    });
+    a.addEventListener('mouseleave', function () {
+      clearInterval(timer); timer = null; k = 0; img.src = cover;
+    });
+  });
+})();
+</script>
 
 {% endblock %}

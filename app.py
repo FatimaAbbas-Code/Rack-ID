@@ -1,4 +1,8 @@
+import csv
+import io
+import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from functools import wraps
@@ -9,10 +13,17 @@ import pg8000.dbapi as pg8000
 from dotenv import load_dotenv
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, session
+    flash, jsonify, session, Response, abort
 )
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+
+try:  # optional — only used to draw Arabic text on the shareable card
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except Exception:  # pragma: no cover
+    arabic_reshaper = None
+    get_display = None
 
 load_dotenv()
 
@@ -143,6 +154,57 @@ def get_item_images(item_id):
     return images
 
 
+def attach_thumbs(items):
+    """Attach each item's ordered thumbnail URLs as item['thumb_urls'] (for the
+    catalog hover preview). Falls back to the cover thumb if none are found."""
+    if not items:
+        return items
+    ids = [it['id'] for it in items]
+    placeholders = ','.join(['%s'] * len(ids))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        f'SELECT item_id, thumb_key FROM item_images '
+        f'WHERE item_id IN ({placeholders}) ORDER BY position, date_added',
+        ids
+    )
+    by_item = {}
+    for item_id, thumb_key in cur.fetchall():
+        by_item.setdefault(item_id, []).append(r2_url(thumb_key))
+    cur.close()
+    conn.close()
+    for it in items:
+        it['thumb_urls'] = by_item.get(it['id']) or [r2_url(it['thumb_key'])]
+    return items
+
+
+def all_items_with_images():
+    """Every item plus its ordered images — used by the CSV / JSON export."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        'SELECT id, name, category, image_key, thumb_key, date_added '
+        'FROM items ORDER BY date_added DESC'
+    )
+    items = rows_to_dicts(cur, cur.fetchall())
+    cur.execute(
+        'SELECT item_id, position, image_key, thumb_key FROM item_images '
+        'ORDER BY item_id, position, date_added'
+    )
+    by_item = {}
+    for item_id, position, image_key, thumb_key in cur.fetchall():
+        by_item.setdefault(item_id, []).append({
+            'position': position,
+            'image_url': r2_url(image_key),
+            'thumb_url': r2_url(thumb_key),
+        })
+    cur.close()
+    conn.close()
+    for it in items:
+        it['images'] = by_item.get(it['id'], [])
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Storage (Cloudflare R2, via the S3-compatible API)
 # ---------------------------------------------------------------------------
@@ -215,6 +277,109 @@ def r2_url(key):
     return f'{R2_PUBLIC_URL}/{key}'
 
 
+def r2_get_bytes(key):
+    """Download one object's bytes from R2 (server-side, no CORS involved)."""
+    s3 = get_r2_client()
+    obj = s3.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+    return obj['Body'].read()
+
+
+# ---------------------------------------------------------------------------
+# Shareable product card (server-side PNG, drawn with Pillow)
+# ---------------------------------------------------------------------------
+CARD_W, CARD_H, CARD_PHOTO_H = 1080, 1350, 1040
+CARD_MARGIN = 48
+FONT_PATH = os.path.join(os.path.dirname(__file__), 'static', 'fonts',
+                         'NotoNaskhArabic-VariableFont.ttf')
+_ARABIC_RE = re.compile('[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]')
+
+
+def _card_font(size, weight=400):
+    try:
+        font = ImageFont.truetype(FONT_PATH, size)
+        try:
+            font.set_variation_by_axes([weight])
+        except Exception:
+            pass
+        return font
+    except Exception:  # font file missing — degrade rather than crash
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()
+
+
+def _shape(text):
+    """Return (display_text, is_rtl). Arabic is reshaped + bidi-ordered so it
+    renders correctly without a complex-text layout engine."""
+    if not text or not _ARABIC_RE.search(text):
+        return text, False
+    if arabic_reshaper and get_display:
+        try:
+            return get_display(arabic_reshaper.reshape(text)), True
+        except Exception:
+            return text, True
+    return text, True
+
+
+def _cover_crop(img, target_w, target_h):
+    iw, ih = img.size
+    scale = max(target_w / iw, target_h / ih)
+    nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))
+    img = img.resize((nw, nh), Image.LANCZOS)
+    left, top = (nw - target_w) // 2, (nh - target_h) // 2
+    return img.crop((left, top, left + target_w, top + target_h))
+
+
+def _ellipsize(text, limit):
+    text = ' '.join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
+
+
+def _draw_line(draw, text, y, size, colour, weight=400):
+    disp, rtl = _shape(_ellipsize(text, 44))
+    if rtl:
+        draw.text((CARD_W - CARD_MARGIN, y), disp, font=_card_font(size, weight),
+                  fill=colour, anchor='ra')
+    else:
+        draw.text((CARD_MARGIN, y), disp, font=_card_font(size, weight),
+                  fill=colour, anchor='la')
+
+
+def compose_card_png(item, photo_bytes):
+    card = Image.new('RGB', (CARD_W, CARD_H), '#FFFFFF')
+    try:
+        with Image.open(BytesIO(photo_bytes)) as p:
+            card.paste(_cover_crop(p.convert('RGB'), CARD_W, CARD_PHOTO_H), (0, 0))
+    except Exception:
+        pass
+
+    d = ImageDraw.Draw(card)
+    d.line([(0, CARD_PHOTO_H), (CARD_W, CARD_PHOTO_H)], fill='#DAD5C9', width=2)
+
+    y = CARD_PHOTO_H + 44
+    d.text((CARD_MARGIN, y), f"ID {item['id']}", font=_card_font(66, 700), fill='#232019')
+    y += 96
+    name = (item.get('name') or '').strip()
+    if name:
+        _draw_line(d, name, y, 42, '#232019', 600)
+        y += 58
+    category = (item.get('category') or '').strip()
+    if category:
+        _draw_line(d, category, y, 32, '#6E7350')
+
+    d.text((CARD_W - CARD_MARGIN, CARD_H - 40), 'Rack & ID', font=_card_font(26),
+           fill='#8A8477', anchor='rs')
+
+    out = BytesIO()
+    card.save(out, 'PNG')
+    return out.getvalue()
+
+
+def safe_filename(value):
+    return re.sub(r'[^A-Za-z0-9._-]+', '_', value).strip('_') or 'item'
+
+
 # ---------------------------------------------------------------------------
 # Translations (basic English / Arabic)
 # ---------------------------------------------------------------------------
@@ -243,6 +408,10 @@ TRANSLATIONS = {
         'item_id_label': 'Item ID',
         'category_label': 'Category',
         'added_label': 'Added',
+        'print_btn': 'Print',
+        'save_image_btn': 'Save as image',
+        'export_label': 'Export catalog',
+        'photos_word': 'photos',
         'item_not_found': 'Item not found.',
         'upload_title': 'Add a new item',
         'upload_sub': 'Use the same ID as your existing system so both stay in sync.',
@@ -305,6 +474,10 @@ TRANSLATIONS = {
         'item_id_label': 'الرقم التعريفي',
         'category_label': 'الفئة',
         'added_label': 'تمت الإضافة',
+        'print_btn': 'طباعة',
+        'save_image_btn': 'حفظ كصورة',
+        'export_label': 'تصدير الكتالوج',
+        'photos_word': 'صور',
         'item_not_found': 'العنصر غير موجود.',
         'upload_title': 'إضافة عنصر جديد',
         'upload_sub': 'استخدم نفس الرقم التعريفي في نظامك الحالي ليبقى الاثنان متطابقين.',
@@ -428,7 +601,7 @@ def logout():
 @viewer_required
 def index():
     q = request.args.get('q', '').strip()
-    items = query_items(q)
+    items = attach_thumbs(query_items(q))
     conn = get_db()
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*) FROM items')
@@ -457,6 +630,76 @@ def item_detail(item_id):
         flash(t('item_not_found'), 'error')
         return redirect(url_for('index'))
     return render_template('item_detail.html', item=item, images=get_item_images(item_id))
+
+
+@app.route('/item/<item_id>/card.png')
+@viewer_required
+def item_card(item_id):
+    item = get_item(item_id)
+    if not item:
+        abort(404)
+    images = get_item_images(item_id)
+    keys = [im['image_key'] for im in images] or [item['image_key']]
+    try:
+        idx = int(request.args.get('img', 0))
+    except (TypeError, ValueError):
+        idx = 0
+    idx = max(0, min(idx, len(keys) - 1))
+    try:
+        photo_bytes = r2_get_bytes(keys[idx])
+    except Exception:
+        photo_bytes = b''
+    png = compose_card_png(item, photo_bytes)
+    return Response(png, mimetype='image/png', headers={
+        'Content-Disposition': f'attachment; filename="item-{safe_filename(item_id)}.png"',
+        'Cache-Control': 'no-store',
+    })
+
+
+# ---------------------------------------------------------------------------
+# Routes — full catalog export (admin only)
+# ---------------------------------------------------------------------------
+@app.route('/export/items.csv')
+@login_required
+def export_csv():
+    items = all_items_with_images()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_urls'])
+    for it in items:
+        added = it['date_added'].isoformat() if it['date_added'] else ''
+        writer.writerow([
+            it['id'], it['name'] or '', it['category'] or '', added,
+            len(it['images']), ' | '.join(i['image_url'] for i in it['images']),
+        ])
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    # UTF-8 BOM so Excel reads Arabic names correctly.
+    body = '﻿' + buf.getvalue()
+    return Response(body, mimetype='text/csv; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.csv"',
+    })
+
+
+@app.route('/export/items.json')
+@login_required
+def export_json():
+    items = all_items_with_images()
+    payload = {
+        'exported_at': datetime.now(timezone.utc).isoformat(),
+        'count': len(items),
+        'items': [{
+            'id': it['id'],
+            'name': it['name'],
+            'category': it['category'],
+            'date_added': it['date_added'].isoformat() if it['date_added'] else None,
+            'images': it['images'],
+        } for it in items],
+    }
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    return Response(body, mimetype='application/json; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.json"',
+    })
 
 
 # ---------------------------------------------------------------------------
