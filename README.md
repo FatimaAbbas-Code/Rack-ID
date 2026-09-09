@@ -30,9 +30,10 @@ nothing important lives on the app server's own disk.
   swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
   and to **Save as image** — a shareable product card (photo + ID +
   name), generated server-side, Arabic text included.
-- **Export** (admin only) — download the whole catalog as **CSV** (opens
-  in Excel) or **JSON** from the catalog page. The JSON doubles as a
-  backup.
+- **Export** (admin only) — from the catalog page, download the whole
+  catalog as **Excel** (`.xlsx`, formatted, with clickable photo links),
+  a **ZIP** (a `catalog.csv` plus every photo file, named by item ID),
+  plain **CSV**, or **JSON**. The JSON and ZIP double as backups.
 - **Language switch** — EN/AR toggle in the nav, with full right-to-left
   layout for Arabic.
 - Thumbnails generated automatically for fast loading even with

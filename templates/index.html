@@ -22,6 +22,8 @@
     {% if is_admin %}
     <div class="export-bar">
       <span>{{ t('export_label') }}:</span>
+      <a href="{{ url_for('export_xlsx') }}">Excel</a>
+      <a href="{{ url_for('export_zip') }}">{{ t('export_zip_label') }}</a>
       <a href="{{ url_for('export_csv') }}">CSV</a>
       <a href="{{ url_for('export_json') }}">JSON</a>
     </div>

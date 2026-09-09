@@ -4,6 +4,7 @@ import json
 import os
 import re
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import urlparse
@@ -11,6 +12,9 @@ from urllib.parse import urlparse
 import boto3
 import pg8000.dbapi as pg8000
 from dotenv import load_dotenv
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, session, Response, abort
@@ -202,6 +206,25 @@ def all_items_with_images():
     conn.close()
     for it in items:
         it['images'] = by_item.get(it['id'], [])
+    return items
+
+
+def all_items_with_image_keys():
+    """Every item plus its ordered R2 image keys — used by the ZIP export."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name, category, date_added FROM items ORDER BY date_added DESC')
+    items = rows_to_dicts(cur, cur.fetchall())
+    cur.execute(
+        'SELECT item_id, image_key FROM item_images ORDER BY item_id, position, date_added'
+    )
+    by_item = {}
+    for item_id, image_key in cur.fetchall():
+        by_item.setdefault(item_id, []).append(image_key)
+    cur.close()
+    conn.close()
+    for it in items:
+        it['image_keys'] = by_item.get(it['id'], [])
     return items
 
 
@@ -411,6 +434,7 @@ TRANSLATIONS = {
         'print_btn': 'Print',
         'save_image_btn': 'Save as image',
         'export_label': 'Export catalog',
+        'export_zip_label': 'ZIP + photos',
         'photos_word': 'photos',
         'item_not_found': 'Item not found.',
         'upload_title': 'Add a new item',
@@ -477,6 +501,7 @@ TRANSLATIONS = {
         'print_btn': 'طباعة',
         'save_image_btn': 'حفظ كصورة',
         'export_label': 'تصدير الكتالوج',
+        'export_zip_label': 'ZIP مع الصور',
         'photos_word': 'صور',
         'item_not_found': 'العنصر غير موجود.',
         'upload_title': 'إضافة عنصر جديد',
@@ -702,6 +727,88 @@ def export_json():
     body = json.dumps(payload, ensure_ascii=False, indent=2)
     return Response(body, mimetype='application/json; charset=utf-8', headers={
         'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.json"',
+    })
+
+
+@app.route('/export/items.xlsx')
+@login_required
+def export_xlsx():
+    items = all_items_with_images()
+    max_photos = min(10, max((len(it['images']) for it in items), default=0))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Catalog'
+    ws.sheet_view.rightToLeft = (session.get('lang', DEFAULT_LANG) == 'ar')
+
+    headers = ['ID', 'Name', 'Category', 'Date added', 'Photos']
+    headers += [f'Photo {i}' for i in range(1, max_photos + 1)]
+    ws.append(headers)
+    head_fill = PatternFill('solid', fgColor='33455E')
+    head_font = Font(bold=True, color='FFFFFF')
+    for cell in ws[1]:
+        cell.fill = head_fill
+        cell.font = head_font
+        cell.alignment = Alignment(vertical='center')
+    ws.freeze_panes = 'A2'
+
+    link_font = Font(color='0563C1', underline='single')
+    for it in items:
+        added = it['date_added'].strftime('%Y-%m-%d') if it['date_added'] else ''
+        ws.append([it['id'], it['name'] or '', it['category'] or '', added, len(it['images'])])
+        row = ws.max_row
+        for i, img in enumerate(it['images'][:max_photos]):
+            cell = ws.cell(row=row, column=6 + i, value=f'Photo {i + 1}')
+            cell.hyperlink = img['image_url']
+            cell.font = link_font
+
+    for i, width in enumerate([16, 34, 22, 14, 8], 1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    for i in range(6, 6 + max_photos):
+        ws.column_dimensions[get_column_letter(i)].width = 12
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    return Response(buf.getvalue(), headers={
+        'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.xlsx"',
+    }, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/export/catalog.zip')
+@login_required
+def export_zip():
+    """CSV plus every photo file, named by item ID. Downloads each image from
+    R2 in turn, so this is an occasional-use admin action, not a hot path."""
+    items = all_items_with_image_keys()
+    s3 = get_r2_client()
+
+    index = io.StringIO()
+    writer = csv.writer(index)
+    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_files'])
+
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for it in items:
+            safe_id = safe_filename(it['id'])
+            saved = []
+            for i, key in enumerate(it['image_keys'], 1):
+                ext = key.rsplit('.', 1)[-1].lower() if '.' in key else 'jpg'
+                arcname = f'images/{safe_id}_{i}.{ext}'
+                try:
+                    body = s3.get_object(Bucket=R2_BUCKET_NAME, Key=key)['Body'].read()
+                    zf.writestr(arcname, body)
+                    saved.append(arcname.split('/', 1)[1])
+                except Exception:
+                    pass
+            added = it['date_added'].isoformat() if it['date_added'] else ''
+            writer.writerow([it['id'], it['name'] or '', it['category'] or '',
+                             added, len(it['image_keys']), ' | '.join(saved)])
+        zf.writestr('catalog.csv', '﻿' + index.getvalue())
+
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    return Response(mem.getvalue(), mimetype='application/zip', headers={
+        'Content-Disposition': f'attachment; filename="rack-and-id-{stamp}.zip"',
     })
 
 
