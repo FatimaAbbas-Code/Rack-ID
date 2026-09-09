@@ -16,9 +16,13 @@
     <span class="brand-name">{{ t('app_name') }}</span>
   </a>
   <nav class="topnav">
-    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">{{ t('nav_catalog') }}</a>
+    {% if is_viewer %}
+      <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">{{ t('nav_catalog') }}</a>
+    {% endif %}
     {% if is_admin %}
       <a href="{{ url_for('upload') }}" class="{{ 'active' if request.endpoint == 'upload' else '' }}">{{ t('nav_add_item') }}</a>
+    {% endif %}
+    {% if is_viewer %}
       <form method="post" action="{{ url_for('logout') }}" class="inline-form">
         <button type="submit" class="link-btn">{{ t('nav_logout') }}</button>
       </form>

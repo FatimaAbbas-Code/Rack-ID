@@ -5,8 +5,19 @@
 <a href="{{ url_for('index') }}" class="back-link">{{ t('back_to_catalog') }}</a>
 
 <section class="detail-wrap">
-  <div class="detail-photo">
-    <img src="{{ r2_url(item.image_key) }}" alt="{{ item.name or item.id }}">
+  <div class="detail-media">
+    <div class="detail-photo">
+      <img id="galleryMain" src="{{ r2_url(images[0].image_key if images else item.image_key) }}" alt="{{ item.name or item.id }}">
+    </div>
+    {% if images and images|length > 1 %}
+    <div class="gallery-thumbs">
+      {% for img in images %}
+      <button type="button" class="gallery-thumb{{ ' active' if loop.first else '' }}" data-full="{{ r2_url(img.image_key) }}">
+        <img src="{{ r2_url(img.thumb_key) }}" alt="">
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
   <div class="detail-info">
     <div class="detail-id">{{ t('item_id_label') }}: <span>{{ item.id }}</span></div>
@@ -26,5 +37,18 @@
     {% endif %}
   </div>
 </section>
+
+{% if images and images|length > 1 %}
+<script>
+  const galleryMain = document.getElementById('galleryMain');
+  document.querySelectorAll('.gallery-thumb').forEach(btn => {
+    btn.addEventListener('click', () => {
+      galleryMain.src = btn.dataset.full;
+      document.querySelectorAll('.gallery-thumb').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+</script>
+{% endif %}
 
 {% endblock %}

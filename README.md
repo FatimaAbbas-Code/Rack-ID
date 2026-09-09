@@ -2,8 +2,9 @@
 
 An internal tool for a clothing store: add product photos tagged with the
 store's existing ID, then browse or search the catalog by ID or name.
-Works on phone and laptop. Two roles — anyone can view, only a logged-in
-admin can add/edit/delete. Supports English and Arabic (right-to-left).
+Works on phone and laptop. Two roles — staff enter a shared viewer
+password to browse, and a separate admin password unlocks add/edit/delete.
+Supports English and Arabic (right-to-left).
 
 **Data storage:** the catalog database lives on **Supabase** (free
 Postgres) and photos live on **Cloudflare R2** (free object storage, up to
@@ -14,13 +15,15 @@ nothing important lives on the app server's own disk.
 
 ## What's included
 
-- **Two roles:** viewer (browse/search only, no login) and admin (login
-  required — add, edit, delete).
+- **Two roles:** viewer (enters a shared password to browse/search) and
+  admin (separate password — add, edit, delete). Nobody sees the catalog
+  without a password.
 - **Catalog page** — responsive, searchable gallery. Search matches ID,
   name, or category. Click any photo to see it full-size.
-- **Add / Edit item** (admin only) — upload a photo with its ID from the
-  store's existing system, plus optional name/category. Editing lets you
-  change name/category and optionally replace the photo.
+- **Add / Edit item** (admin only) — upload one or more photos with the
+  item's ID from the store's existing system, plus optional
+  name/category. Editing lets you change name/category, remove photos,
+  and add more. The first photo is the one shown on the catalog grid.
 - **Language switch** — EN/AR toggle in the nav, with full right-to-left
   layout for Arabic.
 - Thumbnails generated automatically for fast loading even with
@@ -66,7 +69,8 @@ You now have everything needed: `DATABASE_URL`, `R2_ACCOUNT_ID`,
 
 1. Copy `.env.example` to a new file named `.env` in the same folder.
 2. Fill in the values you collected above, plus set your own
-   `ADMIN_PASSWORD` and a random `SECRET_KEY`.
+   `ADMIN_PASSWORD`, a `VIEWER_PASSWORD` (the one everyone needs just to
+   view — e.g. `0000`), and a random `SECRET_KEY`.
 3. Then:
 
 ```bash
@@ -112,6 +116,11 @@ catalog stays intact. The only thing to be careful with: don't change
 the `items` table's column names/types directly in Supabase without
 also updating the matching code in `app.py`.
 
+The first time this version starts (locally or on the server) it creates
+an `item_images` table and copies each existing product's current photo
+into it as that product's first image — nothing is lost, and the step is
+safe to run repeatedly.
+
 ## A note on scale
 
 Supabase's free tier and R2's free tier both comfortably handle a
@@ -121,8 +130,11 @@ only if the store grows well beyond that.
 ## Security note before going live
 
 - Set `ADMIN_PASSWORD` to something only you and the store owner know.
+- Set `VIEWER_PASSWORD` to the password staff use just to view the
+  catalog. Anyone without it only ever sees the sign-in screen. Change it
+  from the `0000` default before sharing the link.
 - Set `SECRET_KEY` to a long random string — e.g. output from
   `python -c "import secrets; print(secrets.token_hex(32))"`.
-- This is a single shared admin password, not individual staff accounts
-  — fine for one store owner. If multiple staff need separate logins
-  later, that's a bigger change worth revisiting.
+- These are two shared passwords, not individual staff accounts — fine
+  for one store owner. If multiple staff need separate logins later,
+  that's a bigger change worth revisiting.

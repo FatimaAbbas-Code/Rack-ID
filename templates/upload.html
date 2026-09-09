@@ -23,9 +23,9 @@
     </label>
 
     <label class="field file-field">
-      <span>{{ t('field_photo') }}</span>
-      <input type="file" name="image" accept="image/png, image/jpeg, image/webp" required id="fileInput">
-      <div class="preview-box" id="previewBox">{{ t('no_photo_selected') }}</div>
+      <span>{{ t('field_photos') }} <em>{{ t('field_photos_hint') }}</em></span>
+      <input type="file" name="images" accept="image/png, image/jpeg, image/webp" multiple required id="fileInput">
+      <div class="preview-grid" id="previewBox">{{ t('no_photos_selected') }}</div>
     </label>
 
     <button type="submit" class="submit-btn">{{ t('submit_add') }}</button>
@@ -35,15 +35,21 @@
 <script>
   const fileInput = document.getElementById('fileInput');
   const previewBox = document.getElementById('previewBox');
+  const emptyLabel = '{{ t("no_photos_selected") }}';
   fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    if (!file) { previewBox.textContent = '{{ t("no_photo_selected") }}'; previewBox.style.backgroundImage = ''; return; }
-    const reader = new FileReader();
-    reader.onload = e => {
-      previewBox.style.backgroundImage = `url(${e.target.result})`;
-      previewBox.textContent = '';
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(fileInput.files || []);
+    previewBox.innerHTML = '';
+    if (!files.length) { previewBox.textContent = emptyLabel; return; }
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.createElement('img');
+        img.src = e.target.result;
+        img.className = 'preview-thumb';
+        previewBox.appendChild(img);
+      };
+      reader.readAsDataURL(file);
+    });
   });
 </script>
 

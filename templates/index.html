@@ -2,7 +2,7 @@
 {% block title %}{{ t('nav_catalog') }}{% endblock %}
 {% block content %}
 
-{% if not is_admin %}
+{% if is_viewer and not is_admin %}
 <div class="viewer-note">{{ t('viewer_note') }}</div>
 {% endif %}
 
