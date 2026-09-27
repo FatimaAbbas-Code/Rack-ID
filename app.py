@@ -864,7 +864,7 @@ def export_xlsx():
     headers = ['ID', 'Name', 'Category', 'Date added', 'Photos']
     headers += [f'Photo {i}' for i in range(1, max_photos + 1)]
     ws.append(headers)
-    head_fill = PatternFill('solid', fgColor='33455E')
+    head_fill = PatternFill('solid', fgColor='0F0F0F')
     head_font = Font(bold=True, color='FFFFFF')
     for cell in ws[1]:
         cell.fill = head_fill

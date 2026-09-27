@@ -4,11 +4,14 @@
   --ink-soft: #5B564C;
   --line: #DAD5C9;
   --card: #FFFFFF;
-  --denim: #33455E;
-  --denim-dark: #263447;
+  --primary: #0F0F0F;       /* J&S "Secondary" (their brand black) — used for buttons/links; their
+                                gold Primary is too light for white button text, so it's reserved
+                                for small badges below instead */
+  --primary-dark: #262626;  /* lighter than --primary on purpose, since --primary is already near-black */
   --olive: #6E7350;
   --danger: #A13F3F;
-  --gold: #FDC122;   /* J&S brand gold — used on small badges over photos, where it has good contrast */
+  --gold: #FFC805;          /* J&S "Primary" (their brand gold) */
+  --gold-dark: #EDB900;
   --radius: 4px;
 }
 
@@ -22,10 +25,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--denim); text-decoration: none; }
+a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 a:focus-visible, button:focus-visible, input:focus-visible {
-  outline: 2px solid var(--denim);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -68,7 +71,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   border-bottom: 2px solid transparent;
 }
 .topnav a:hover { text-decoration: none; color: var(--ink); }
-.topnav a.active { color: var(--ink); border-bottom-color: var(--denim); }
+.topnav a.active { color: var(--ink); border-bottom-color: var(--primary); }
 .link-btn {
   background: none;
   border: none;
@@ -92,12 +95,12 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   border-inline-start: 1px solid var(--line);
 }
 .lang-switch a { color: var(--ink-soft); font-weight: 500; padding: 2px; }
-.lang-switch a.active { color: var(--denim); font-weight: 700; }
+.lang-switch a.active { color: var(--primary); font-weight: 700; }
 .lang-sep { color: var(--line); }
 .viewer-note {
-  background: #EFF2F6;
-  border: 1px solid #D6DEE8;
-  color: var(--denim-dark);
+  background: #F1F1F1;
+  border: 1px solid #DDDDDD;
+  color: var(--ink-soft);
   font-size: 13px;
   padding: 10px 14px;
   border-radius: var(--radius);
@@ -189,13 +192,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   font-weight: 600;
   font-size: 14px;
   padding: 10px 18px;
-  background: var(--denim);
+  background: var(--primary);
   color: #fff;
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
 }
-.search-row button:hover { background: var(--denim-dark); }
+.search-row button:hover { background: var(--primary-dark); }
 .clear-link { align-self: center; font-size: 13px; color: var(--ink-soft); }
 .count-pill {
   font-family: 'IBM Plex Mono', monospace;
@@ -244,13 +247,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   align-self: flex-start;
   margin-top: auto;
   padding: 8px 14px;
-  background: var(--denim);
+  background: var(--primary);
   color: #fff;
   border-radius: var(--radius);
   font-size: 14px;
   font-weight: 600;
 }
-.manage-action:hover { background: var(--denim-dark); text-decoration: none; }
+.manage-action:hover { background: var(--primary-dark); text-decoration: none; }
 
 /* ---------- Gallery grid ---------- */
 .grid {
@@ -351,7 +354,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   cursor: pointer;
   font-family: 'Inter', sans-serif;
 }
-.edit-btn:hover { border-color: var(--denim); color: var(--denim); text-decoration: none; }
+.edit-btn:hover { border-color: var(--primary); color: var(--primary); text-decoration: none; }
 .remove-btn:hover { border-color: var(--danger); color: var(--danger); }
 .tag-photo { display: block; }
 
@@ -402,7 +405,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
 .submit-btn {
   margin-top: 8px;
   padding: 12px 18px;
-  background: var(--denim);
+  background: var(--primary);
   color: #fff;
   border: none;
   border-radius: var(--radius);
@@ -410,7 +413,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   font-size: 15px;
   cursor: pointer;
 }
-.submit-btn:hover { background: var(--denim-dark); }
+.submit-btn:hover { background: var(--primary-dark); }
 
 /* ---------- Footer ---------- */
 .foot-note {
@@ -500,7 +503,7 @@ body.rtl .gallery-next::before { content: "\2039"; }
   font-weight: 500;
   cursor: pointer;
 }
-.tool-btn:hover { border-color: var(--denim); color: var(--denim); text-decoration: none; }
+.tool-btn:hover { border-color: var(--primary); color: var(--primary); text-decoration: none; }
 .detail-id {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
@@ -531,8 +534,8 @@ body.rtl .gallery-next::before { content: "\2039"; }
   cursor: pointer;
   font-family: 'Inter', sans-serif;
 }
-.edit-btn-lg { background: var(--denim); color: #fff; border: none; }
-.edit-btn-lg:hover { background: var(--denim-dark); text-decoration: none; }
+.edit-btn-lg { background: var(--primary); color: #fff; border: none; }
+.edit-btn-lg:hover { background: var(--primary-dark); text-decoration: none; }
 .remove-btn-lg { background: none; border: 1px solid var(--line); color: var(--danger); }
 .remove-btn-lg:hover { border-color: var(--danger); }
 
@@ -606,7 +609,7 @@ body.rtl .brand { flex-direction: row; }
   overflow: hidden;
 }
 .gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.gallery-thumb.active { border-color: var(--denim); outline: 1px solid var(--denim); }
+.gallery-thumb.active { border-color: var(--primary); outline: 1px solid var(--primary); }
 
 /* ---------- Mobile ---------- */
 @media (max-width: 600px) {
