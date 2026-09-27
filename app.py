@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -58,19 +59,34 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 # Database (Postgres / Supabase via pg8000 — pure Python, no compiler needed)
 # ---------------------------------------------------------------------------
 def get_db():
+    """Connect to Postgres, retrying briefly on transient failures (e.g. a
+    momentary hiccup from Supabase's connection pooler) instead of letting a
+    single blip surface as a 500 to whoever's looking at the page."""
     if not DATABASE_URL:
         raise RuntimeError(
             'DATABASE_URL is not set. Add it to your .env file (see .env.example).'
         )
     parsed = urlparse(DATABASE_URL)
-    return pg8000.connect(
-        user=parsed.username,
-        password=parsed.password,
-        host=parsed.hostname,
-        port=parsed.port or 5432,
-        database=parsed.path.lstrip('/'),
-        ssl_context=True,
-    )
+    attempts = 3
+    delay = 0.4
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            return pg8000.connect(
+                user=parsed.username,
+                password=parsed.password,
+                host=parsed.hostname,
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/'),
+                ssl_context=True,
+                timeout=5,
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(delay)
+                delay *= 2
+    raise last_exc
 
 
 def init_db():
@@ -158,6 +174,27 @@ def get_item_images(item_id):
     return images
 
 
+def get_item_and_images(item_id):
+    """Same result as get_item() + get_item_images(), but sharing one
+    database connection instead of opening two — used by the item detail
+    page, which is hit far more than the admin-only routes below."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM items WHERE id = %s', (item_id,))
+    rows = rows_to_dicts(cur, cur.fetchall())
+    item = rows[0] if rows else None
+    images = []
+    if item:
+        cur.execute(
+            'SELECT * FROM item_images WHERE item_id = %s ORDER BY position, date_added',
+            (item_id,)
+        )
+        images = rows_to_dicts(cur, cur.fetchall())
+    cur.close()
+    conn.close()
+    return item, images
+
+
 def attach_thumbs(items):
     """Attach each item's ordered thumbnail URLs as item['thumb_urls'] (for the
     catalog hover preview). Falls back to the cover thumb if none are found."""
@@ -180,6 +217,46 @@ def attach_thumbs(items):
     for it in items:
         it['thumb_urls'] = by_item.get(it['id']) or [r2_url(it['thumb_key'])]
     return items
+
+
+def load_catalog(q):
+    """Filtered items (with thumbnail URLs attached) plus the total catalog
+    size — everything the catalog page needs, in one connection instead of
+    three. Kept separate from query_items()/attach_thumbs(), which the
+    search API still uses on its own."""
+    conn = get_db()
+    cur = conn.cursor()
+    if q:
+        like = f'%{q}%'
+        cur.execute(
+            'SELECT * FROM items WHERE id LIKE %s OR name LIKE %s OR category LIKE %s '
+            'ORDER BY date_added DESC',
+            (like, like, like)
+        )
+    else:
+        cur.execute('SELECT * FROM items ORDER BY date_added DESC')
+    items = rows_to_dicts(cur, cur.fetchall())
+
+    if items:
+        ids = [it['id'] for it in items]
+        placeholders = ','.join(['%s'] * len(ids))
+        cur.execute(
+            f'SELECT item_id, thumb_key FROM item_images '
+            f'WHERE item_id IN ({placeholders}) ORDER BY position, date_added',
+            ids
+        )
+        by_item = {}
+        for item_id, thumb_key in cur.fetchall():
+            by_item.setdefault(item_id, []).append(r2_url(thumb_key))
+        for it in items:
+            it['thumb_urls'] = by_item.get(it['id']) or [r2_url(it['thumb_key'])]
+
+    cur.execute('SELECT COUNT(*) FROM items')
+    total = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+    return items, total
 
 
 def all_items_with_images():
@@ -434,6 +511,9 @@ TRANSLATIONS = {
         'added_label': 'Added',
         'print_btn': 'Print',
         'save_image_btn': 'Save as image',
+        'error_title': 'Something went wrong',
+        'error_msg': "The page couldn't load — this is usually temporary. Please try again in a moment.",
+        'error_retry': 'Try again',
         'manage_title': 'Manage catalog',
         'manage_items': 'Items',
         'manage_import_hint': 'Restore from a JSON or ZIP export.',
@@ -516,6 +596,9 @@ TRANSLATIONS = {
         'added_label': 'تمت الإضافة',
         'print_btn': 'طباعة',
         'save_image_btn': 'حفظ كصورة',
+        'error_title': 'حدث خطأ ما',
+        'error_msg': 'تعذّر تحميل الصفحة — هذا غالبًا مؤقت. الرجاء المحاولة مرة أخرى بعد قليل.',
+        'error_retry': 'إعادة المحاولة',
         'manage_title': 'إدارة الكتالوج',
         'manage_items': 'العناصر',
         'manage_import_hint': 'استعادة من ملف تصدير JSON أو ZIP.',
@@ -602,6 +685,14 @@ def set_lang(code):
     return redirect(request.referrer or url_for('index'))
 
 
+@app.errorhandler(500)
+def handle_server_error(exc):
+    # Most often a momentary database/storage hiccup (see get_db's retries) —
+    # show a plain, friendly page instead of a raw stack-trace-less crash page.
+    app.logger.exception(exc)
+    return render_template('error.html'), 500
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -659,13 +750,7 @@ def logout():
 @viewer_required
 def index():
     q = request.args.get('q', '').strip()
-    items = attach_thumbs(query_items(q))
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) FROM items')
-    total = cur.fetchone()[0]
-    cur.close()
-    conn.close()
+    items, total = load_catalog(q)
     return render_template('index.html', items=items, query=q, total=total)
 
 
@@ -683,11 +768,11 @@ def api_search():
 @app.route('/item/<item_id>')
 @viewer_required
 def item_detail(item_id):
-    item = get_item(item_id)
+    item, images = get_item_and_images(item_id)
     if not item:
         flash(t('item_not_found'), 'error')
         return redirect(url_for('index'))
-    return render_template('item_detail.html', item=item, images=get_item_images(item_id))
+    return render_template('item_detail.html', item=item, images=images)
 
 
 @app.route('/item/<item_id>/card.png')

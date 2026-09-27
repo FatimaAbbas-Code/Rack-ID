@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t('error_title') }}{% endblock %}
+{% block content %}
+
+<section class="empty-state">
+  <p>{{ t('error_msg') }}</p>
+  <a href="{{ request.path }}" class="cta-link">{{ t('error_retry') }}</a>
+</section>
+
+{% endblock %}
