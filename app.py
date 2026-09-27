@@ -468,7 +468,7 @@ def compose_card_png(item, photo_bytes):
     if category:
         _draw_line(d, category, y, 32, '#6E7350')
 
-    d.text((CARD_W - CARD_MARGIN, CARD_H - 40), 'Rack & ID', font=_card_font(26),
+    d.text((CARD_W - CARD_MARGIN, CARD_H - 40), t('app_name'), font=_card_font(26),
            fill='#8A8477', anchor='rs')
 
     out = BytesIO()
@@ -485,7 +485,7 @@ def safe_filename(value):
 # ---------------------------------------------------------------------------
 TRANSLATIONS = {
     'en': {
-        'app_name': 'Rack & ID',
+        'app_name': 'J&S',
         'nav_catalog': 'Catalog',
         'nav_add_item': 'Add item',
         'nav_manage': 'Manage',
@@ -570,7 +570,7 @@ TRANSLATIONS = {
         'item_updated': 'Changes saved.',
     },
     'ar': {
-        'app_name': 'رفّ آي دي',
+        'app_name': 'J&S',
         'nav_catalog': 'الكتالوج',
         'nav_add_item': 'إضافة عنصر',
         'nav_manage': 'الإدارة',

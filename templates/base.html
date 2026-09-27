@@ -8,11 +8,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Cairo:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='img/logo.jpg') }}">
 </head>
 <body class="{{ 'rtl' if is_rtl else '' }}">
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}">
-    <span class="brand-mark">R&amp;ID</span>
+    <img class="brand-mark" src="{{ url_for('static', filename='img/logo.jpg') }}" alt="{{ t('app_name') }}">
     <span class="brand-name">{{ t('app_name') }}</span>
   </a>
   <nav class="topnav">
