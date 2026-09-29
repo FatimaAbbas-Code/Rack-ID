@@ -7,6 +7,7 @@ import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -123,6 +124,17 @@ def init_db():
         WHERE NOT EXISTS (SELECT 1 FROM item_images im WHERE im.item_id = i.id)
         ON CONFLICT (id) DO NOTHING
     ''')
+    # Purchasing/pricing fields, admin-only. NUMERIC(10,3) so KWD fils (3
+    # decimal places) round-trip exactly — never store money as float.
+    cur.execute('''
+        ALTER TABLE items
+            ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(10,3),
+            ADD COLUMN IF NOT EXISTS sale_price NUMERIC(10,3),
+            ADD COLUMN IF NOT EXISTS cost NUMERIC(10,3),
+            ADD COLUMN IF NOT EXISTS purchase_qty INTEGER,
+            ADD COLUMN IF NOT EXISTS sale_qty INTEGER,
+            ADD COLUMN IF NOT EXISTS stock INTEGER
+    ''')
     conn.commit()
     cur.close()
     conn.close()
@@ -131,6 +143,65 @@ def init_db():
 def rows_to_dicts(cur, rows):
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, row)) for row in rows]
+
+
+# Purchasing/pricing columns, admin-only everywhere they're shown.
+INVENTORY_MONEY_FIELDS = ('purchase_price', 'sale_price', 'cost')
+INVENTORY_QTY_FIELDS = ('purchase_qty', 'sale_qty', 'stock')
+INVENTORY_FIELDS = INVENTORY_MONEY_FIELDS + INVENTORY_QTY_FIELDS
+
+
+def parse_inventory_form(form):
+    """Read & validate the 6 optional price/quantity fields from a submitted
+    form. Returns (values, error) — values maps each field name to a Decimal
+    (money), int (quantity), or None (left blank); error is a translation
+    key, set only when something doesn't parse or is negative."""
+    values = {}
+    for field in INVENTORY_MONEY_FIELDS:
+        raw = (form.get(field) or '').strip()
+        if not raw:
+            values[field] = None
+            continue
+        try:
+            value = Decimal(raw)
+        except InvalidOperation:
+            return None, 'price_qty_invalid'
+        if value < 0:
+            return None, 'price_qty_invalid'
+        values[field] = value
+    for field in INVENTORY_QTY_FIELDS:
+        raw = (form.get(field) or '').strip()
+        if not raw:
+            values[field] = None
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            return None, 'price_qty_invalid'
+        if value < 0:
+            return None, 'price_qty_invalid'
+        values[field] = value
+    return values, None
+
+
+def lenient_decimal(raw):
+    """Best-effort parse used only when restoring from an export — never
+    rejects the whole import over one bad cell."""
+    if raw is None or raw == '':
+        return None
+    try:
+        return Decimal(str(raw))
+    except InvalidOperation:
+        return None
+
+
+def lenient_int(raw):
+    if raw is None or raw == '':
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
 
 
 def query_items(q):
@@ -264,7 +335,8 @@ def all_items_with_images():
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        'SELECT id, name, category, image_key, thumb_key, date_added '
+        'SELECT id, name, category, image_key, thumb_key, date_added, '
+        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock '
         'FROM items ORDER BY date_added DESC'
     )
     items = rows_to_dicts(cur, cur.fetchall())
@@ -290,7 +362,11 @@ def all_items_with_image_keys():
     """Every item plus its ordered R2 image keys — used by the ZIP export."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, name, category, date_added FROM items ORDER BY date_added DESC')
+    cur.execute(
+        'SELECT id, name, category, date_added, '
+        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock '
+        'FROM items ORDER BY date_added DESC'
+    )
     items = rows_to_dicts(cur, cur.fetchall())
     cur.execute(
         'SELECT item_id, image_key FROM item_images ORDER BY item_id, position, date_added'
@@ -509,6 +585,15 @@ TRANSLATIONS = {
         'item_id_label': 'Item ID',
         'category_label': 'Category',
         'added_label': 'Added',
+        'inventory_section_title': 'Inventory & pricing (admin only)',
+        'purchase_price_label': 'Purchase price',
+        'sale_price_label': 'Sale price',
+        'cost_label': 'Cost',
+        'purchase_qty_label': 'Purchase quantity',
+        'sale_qty_label': 'Sale quantity',
+        'stock_label': 'Stock',
+        'not_set': '—',
+        'price_qty_invalid': 'Check the price/quantity fields — they must be zero or more.',
         'print_btn': 'Print',
         'save_image_btn': 'Save as image',
         'error_title': 'Something went wrong',
@@ -594,6 +679,15 @@ TRANSLATIONS = {
         'item_id_label': 'الرقم التعريفي',
         'category_label': 'الفئة',
         'added_label': 'تمت الإضافة',
+        'inventory_section_title': 'المخزون والتسعير (للمسؤول فقط)',
+        'purchase_price_label': 'سعر الشراء',
+        'sale_price_label': 'سعر البيع',
+        'cost_label': 'تكلفة',
+        'purchase_qty_label': 'كمية الشراء',
+        'sale_qty_label': 'كمية البيع',
+        'stock_label': 'مخزون',
+        'not_set': '—',
+        'price_qty_invalid': 'تحقق من حقول السعر/الكمية — يجب أن تكون صفرًا أو أكثر.',
         'print_btn': 'طباعة',
         'save_image_btn': 'حفظ كصورة',
         'error_title': 'حدث خطأ ما',
@@ -808,13 +902,14 @@ def export_csv():
     items = all_items_with_images()
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_urls'])
+    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_urls']
+                     + list(INVENTORY_FIELDS))
     for it in items:
         added = it['date_added'].isoformat() if it['date_added'] else ''
         writer.writerow([
             it['id'], it['name'] or '', it['category'] or '', added,
             len(it['images']), ' | '.join(i['image_url'] for i in it['images']),
-        ])
+        ] + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS])
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
     # UTF-8 BOM so Excel reads Arabic names correctly.
     body = '﻿' + buf.getvalue()
@@ -836,6 +931,10 @@ def build_backup_payload():
             'category': it['category'],
             'date_added': it['date_added'].isoformat() if it['date_added'] else None,
             'images': it['images'],
+            # Prices as strings (exact decimal, JSON has no fixed-point type);
+            # quantities stay native JSON numbers.
+            **{f: (str(it[f]) if it[f] is not None else None) for f in INVENTORY_MONEY_FIELDS},
+            **{f: it[f] for f in INVENTORY_QTY_FIELDS},
         } for it in items],
     }
 
@@ -861,7 +960,9 @@ def export_xlsx():
     ws.title = 'Catalog'
     ws.sheet_view.rightToLeft = (session.get('lang', DEFAULT_LANG) == 'ar')
 
-    headers = ['ID', 'Name', 'Category', 'Date added', 'Photos']
+    inv_headers = ['Purchase price', 'Sale price', 'Cost', 'Purchase qty', 'Sale qty', 'Stock']
+    fixed_count = 5 + len(inv_headers)  # ID, Name, Category, Date added, Photos + the 6 above
+    headers = ['ID', 'Name', 'Category', 'Date added', 'Photos'] + inv_headers
     headers += [f'Photo {i}' for i in range(1, max_photos + 1)]
     ws.append(headers)
     head_fill = PatternFill('solid', fgColor='0F0F0F')
@@ -875,16 +976,20 @@ def export_xlsx():
     link_font = Font(color='0563C1', underline='single')
     for it in items:
         added = it['date_added'].strftime('%Y-%m-%d') if it['date_added'] else ''
-        ws.append([it['id'], it['name'] or '', it['category'] or '', added, len(it['images'])])
+        row_values = [it['id'], it['name'] or '', it['category'] or '', added, len(it['images'])]
+        row_values += [float(it[f]) if f in INVENTORY_MONEY_FIELDS and it[f] is not None
+                       else it[f] for f in INVENTORY_FIELDS]
+        ws.append(row_values)
         row = ws.max_row
         for i, img in enumerate(it['images'][:max_photos]):
-            cell = ws.cell(row=row, column=6 + i, value=f'Photo {i + 1}')
+            cell = ws.cell(row=row, column=fixed_count + 1 + i, value=f'Photo {i + 1}')
             cell.hyperlink = img['image_url']
             cell.font = link_font
 
-    for i, width in enumerate([16, 34, 22, 14, 8], 1):
+    widths = [16, 34, 22, 14, 8, 13, 13, 13, 12, 12, 10]
+    for i, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = width
-    for i in range(6, 6 + max_photos):
+    for i in range(fixed_count + 1, fixed_count + 1 + max_photos):
         ws.column_dimensions[get_column_letter(i)].width = 12
 
     buf = io.BytesIO()
@@ -905,7 +1010,8 @@ def export_zip():
 
     index = io.StringIO()
     writer = csv.writer(index)
-    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_files'])
+    writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_files']
+                     + list(INVENTORY_FIELDS))
 
     mem = io.BytesIO()
     with zipfile.ZipFile(mem, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -923,7 +1029,8 @@ def export_zip():
                     pass
             added = it['date_added'].isoformat() if it['date_added'] else ''
             writer.writerow([it['id'], it['name'] or '', it['category'] or '',
-                             added, len(it['image_keys']), ' | '.join(saved)])
+                             added, len(it['image_keys']), ' | '.join(saved)]
+                             + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS])
         zf.writestr('catalog.csv', '﻿' + index.getvalue())
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
@@ -987,10 +1094,14 @@ def import_from_json(raw):
         parsed.sort(key=lambda x: x[0])
         added_at = _parse_dt(rec.get('date_added'))
         cur.execute(
-            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added) '
-            'VALUES (%s, %s, %s, %s, %s, %s)',
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (iid, rec.get('name') or '', rec.get('category') or '',
-             parsed[0][1], parsed[0][2], added_at)
+             parsed[0][1], parsed[0][2], added_at,
+             lenient_decimal(rec.get('purchase_price')), lenient_decimal(rec.get('sale_price')),
+             lenient_decimal(rec.get('cost')), lenient_int(rec.get('purchase_qty')),
+             lenient_int(rec.get('sale_qty')), lenient_int(rec.get('stock')))
         )
         for pos, ik, tk in parsed:
             cur.execute(
@@ -1048,10 +1159,14 @@ def import_from_zip(raw):
             continue
         added_at = _parse_dt(row.get('date_added'))
         cur.execute(
-            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added) '
-            'VALUES (%s, %s, %s, %s, %s, %s)',
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (iid, row.get('name') or '', row.get('category') or '',
-             saved[0][0], saved[0][1], added_at)
+             saved[0][0], saved[0][1], added_at,
+             lenient_decimal(row.get('purchase_price')), lenient_decimal(row.get('sale_price')),
+             lenient_decimal(row.get('cost')), lenient_int(row.get('purchase_qty')),
+             lenient_int(row.get('sale_qty')), lenient_int(row.get('stock')))
         )
         for pos, (ik, tk) in enumerate(saved):
             cur.execute(
@@ -1152,6 +1267,11 @@ def upload():
             flash(t('id_exists'), 'error')
             return redirect(url_for('upload'))
 
+        inv, inv_error = parse_inventory_form(request.form)
+        if inv_error:
+            flash(t(inv_error), 'error')
+            return redirect(url_for('upload'))
+
         saved = [save_image(f) for f in files]
         now = datetime.now(timezone.utc)
         cover_image, cover_thumb = saved[0]
@@ -1159,8 +1279,12 @@ def upload():
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added) VALUES (%s, %s, %s, %s, %s, %s)',
-            (item_id, name, category, cover_image, cover_thumb, now)
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            (item_id, name, category, cover_image, cover_thumb, now,
+             inv['purchase_price'], inv['sale_price'], inv['cost'],
+             inv['purchase_qty'], inv['sale_qty'], inv['stock'])
         )
         for position, (image_key, thumb_key) in enumerate(saved):
             cur.execute(
@@ -1202,6 +1326,11 @@ def edit_item(item_id):
             flash(t('image_required'), 'error')
             return redirect(url_for('edit_item', item_id=item_id))
 
+        inv, inv_error = parse_inventory_form(request.form)
+        if inv_error:
+            flash(t(inv_error), 'error')
+            return redirect(url_for('edit_item', item_id=item_id))
+
         saved = [save_image(f) for f in new_files]
         now = datetime.now(timezone.utc)
         next_position = max([img['position'] for img in keeping], default=-1) + 1
@@ -1221,8 +1350,12 @@ def edit_item(item_id):
         )
         cover = cur.fetchone()
         cur.execute(
-            'UPDATE items SET name = %s, category = %s, image_key = %s, thumb_key = %s WHERE id = %s',
-            (name, category, cover[0], cover[1], item_id)
+            'UPDATE items SET name = %s, category = %s, image_key = %s, thumb_key = %s, '
+            'purchase_price = %s, sale_price = %s, cost = %s, '
+            'purchase_qty = %s, sale_qty = %s, stock = %s WHERE id = %s',
+            (name, category, cover[0], cover[1],
+             inv['purchase_price'], inv['sale_price'], inv['cost'],
+             inv['purchase_qty'], inv['sale_qty'], inv['stock'], item_id)
         )
         conn.commit()
         cur.close()

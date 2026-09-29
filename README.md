@@ -26,6 +26,11 @@ nothing important lives on the app server's own disk.
   item's ID from the store's existing system, plus optional
   name/category. Editing lets you change name/category, remove photos,
   and add more. The first photo is the one shown on the catalog grid.
+- **Inventory & pricing** (admin only, hidden from viewers entirely) —
+  purchase price, sale price, cost, purchase quantity, sale quantity, and
+  stock. All optional, entered by hand (no automatic stock calculation).
+  Prices are stored as exact fixed-point numbers (3 decimal places, KWD
+  fils-safe) — never as floating point.
 - **Item page** — photo gallery with arrows, thumbnails, keyboard and
   swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
   and to **Save as image** — a shareable product card (photo + ID +

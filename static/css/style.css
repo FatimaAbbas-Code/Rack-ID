@@ -380,15 +380,54 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
 .item-form { display: flex; flex-direction: column; gap: 16px; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500; }
 .field em { font-weight: 400; color: var(--ink-soft); font-style: normal; font-size: 12px; }
-.field input[type="text"] {
+.field input[type="text"],
+.field input[type="number"] {
   font-family: 'Inter', sans-serif;
   font-size: 15px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
+  width: 100%;
 }
 .field input[type="file"] { font-size: 13px; }
+
+/* ---------- Inventory & pricing (admin-only) ---------- */
+.form-section-heading {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin: 4px 0 -6px;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.admin-panel {
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: #F1F1F1;
+  border: 1px solid #DDDDDD;
+  border-radius: var(--radius);
+}
+.admin-panel h2 {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin: 0 0 10px;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+.admin-grid .field-label { font-size: 12px; color: var(--ink-soft); }
+.admin-grid .field-value { font-size: 14px; font-weight: 600; color: var(--ink); }
 .preview-box {
   margin-top: 8px;
   height: 180px;
@@ -642,6 +681,8 @@ body.rtl .brand { flex-direction: row; }
   .detail-wrap { grid-template-columns: 1fr; }
   .gallery-prev { inset-inline-start: 4px; }
   .gallery-next { inset-inline-end: 4px; }
+
+  .field-grid, .admin-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- Print (single item sheet) ---------- */
@@ -651,6 +692,7 @@ body.rtl .brand { flex-direction: row; }
   .toast-stack,
   .back-link,
   .viewer-note,
+  .admin-panel,
   .detail-actions,
   .detail-tools,
   .gallery-thumbs,

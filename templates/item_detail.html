@@ -32,6 +32,26 @@
     {% endif %}
     <div class="detail-row"><span class="detail-key">{{ t('added_label') }}</span><span>{{ item.date_added.strftime('%Y-%m-%d') }}</span></div>
 
+    {% if is_admin %}
+    <div class="admin-panel">
+      <h2>{{ t('inventory_section_title') }}</h2>
+      <div class="admin-grid">
+        <span class="field-label">{{ t('purchase_price_label') }}</span>
+        <span class="field-value">{{ item.purchase_price if item.purchase_price is not none else t('not_set') }}</span>
+        <span class="field-label">{{ t('sale_price_label') }}</span>
+        <span class="field-value">{{ item.sale_price if item.sale_price is not none else t('not_set') }}</span>
+        <span class="field-label">{{ t('cost_label') }}</span>
+        <span class="field-value">{{ item.cost if item.cost is not none else t('not_set') }}</span>
+        <span class="field-label">{{ t('purchase_qty_label') }}</span>
+        <span class="field-value">{{ item.purchase_qty if item.purchase_qty is not none else t('not_set') }}</span>
+        <span class="field-label">{{ t('sale_qty_label') }}</span>
+        <span class="field-value">{{ item.sale_qty if item.sale_qty is not none else t('not_set') }}</span>
+        <span class="field-label">{{ t('stock_label') }}</span>
+        <span class="field-value">{{ item.stock if item.stock is not none else t('not_set') }}</span>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="detail-tools">
       <button type="button" class="tool-btn" id="printBtn">{{ t('print_btn') }}</button>
       <a class="tool-btn" href="{{ url_for('item_card', item_id=item.id) }}">{{ t('save_image_btn') }}</a>

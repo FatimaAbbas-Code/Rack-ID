@@ -22,6 +22,34 @@
       <input type="text" name="category" placeholder="e.g. Jackets">
     </label>
 
+    <h2 class="form-section-heading">{{ t('inventory_section_title') }}</h2>
+    <div class="field-grid">
+      <label class="field">
+        <span>{{ t('purchase_price_label') }}</span>
+        <input type="number" name="purchase_price" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('sale_price_label') }}</span>
+        <input type="number" name="sale_price" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('cost_label') }}</span>
+        <input type="number" name="cost" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('purchase_qty_label') }}</span>
+        <input type="number" name="purchase_qty" step="1" min="0" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>{{ t('sale_qty_label') }}</span>
+        <input type="number" name="sale_qty" step="1" min="0" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>{{ t('stock_label') }}</span>
+        <input type="number" name="stock" step="1" min="0" inputmode="numeric">
+      </label>
+    </div>
+
     <label class="field file-field">
       <span>{{ t('field_photos') }} <em>{{ t('field_photos_hint') }}</em></span>
       <input type="file" name="images" accept="image/png, image/jpeg, image/webp" multiple required id="fileInput">

@@ -22,6 +22,34 @@
       <input type="text" name="category" value="{{ item.category or '' }}" placeholder="e.g. Jackets">
     </label>
 
+    <h2 class="form-section-heading">{{ t('inventory_section_title') }}</h2>
+    <div class="field-grid">
+      <label class="field">
+        <span>{{ t('purchase_price_label') }}</span>
+        <input type="number" name="purchase_price" value="{{ item.purchase_price if item.purchase_price is not none else '' }}" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('sale_price_label') }}</span>
+        <input type="number" name="sale_price" value="{{ item.sale_price if item.sale_price is not none else '' }}" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('cost_label') }}</span>
+        <input type="number" name="cost" value="{{ item.cost if item.cost is not none else '' }}" step="0.001" min="0" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>{{ t('purchase_qty_label') }}</span>
+        <input type="number" name="purchase_qty" value="{{ item.purchase_qty if item.purchase_qty is not none else '' }}" step="1" min="0" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>{{ t('sale_qty_label') }}</span>
+        <input type="number" name="sale_qty" value="{{ item.sale_qty if item.sale_qty is not none else '' }}" step="1" min="0" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>{{ t('stock_label') }}</span>
+        <input type="number" name="stock" value="{{ item.stock if item.stock is not none else '' }}" step="1" min="0" inputmode="numeric">
+      </label>
+    </div>
+
     <div class="field">
       <span>{{ t('edit_photos_current') }}</span>
       <div class="current-photos">
