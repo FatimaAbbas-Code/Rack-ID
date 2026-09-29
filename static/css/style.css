@@ -406,14 +406,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   grid-template-columns: 1fr 1fr;
   gap: 14px 16px;
 }
-.admin-panel {
+.detail-panel {
   margin-top: 20px;
   padding: 14px 16px;
   background: #F1F1F1;
   border: 1px solid #DDDDDD;
   border-radius: var(--radius);
 }
-.admin-panel h2 {
+.detail-panel h2 {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   text-transform: uppercase;
@@ -421,13 +421,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   color: var(--ink-soft);
   margin: 0 0 10px;
 }
-.admin-grid {
+.detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px 16px;
 }
-.admin-grid .field-label { font-size: 12px; color: var(--ink-soft); }
-.admin-grid .field-value { font-size: 14px; font-weight: 600; color: var(--ink); }
+.detail-grid .field-label { font-size: 12px; color: var(--ink-soft); }
+.detail-grid .field-value { font-size: 14px; font-weight: 600; color: var(--ink); }
 .preview-box {
   margin-top: 8px;
   height: 180px;
@@ -682,7 +682,7 @@ body.rtl .brand { flex-direction: row; }
   .gallery-prev { inset-inline-start: 4px; }
   .gallery-next { inset-inline-end: 4px; }
 
-  .field-grid, .admin-grid { grid-template-columns: 1fr; }
+  .field-grid, .detail-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- Print (single item sheet) ---------- */
@@ -692,7 +692,7 @@ body.rtl .brand { flex-direction: row; }
   .toast-stack,
   .back-link,
   .viewer-note,
-  .admin-panel,
+  .detail-panel,
   .detail-actions,
   .detail-tools,
   .gallery-thumbs,

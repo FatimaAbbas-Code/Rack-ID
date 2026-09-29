@@ -32,10 +32,10 @@
     {% endif %}
     <div class="detail-row"><span class="detail-key">{{ t('added_label') }}</span><span>{{ item.date_added.strftime('%Y-%m-%d') }}</span></div>
 
-    {% if is_admin %}
-    <div class="admin-panel">
+    {% if is_viewer %}
+    <div class="detail-panel">
       <h2>{{ t('inventory_section_title') }}</h2>
-      <div class="admin-grid">
+      <div class="detail-grid">
         <span class="field-label">{{ t('purchase_price_label') }}</span>
         <span class="field-value">{{ item.purchase_price if item.purchase_price is not none else t('not_set') }}</span>
         <span class="field-label">{{ t('sale_price_label') }}</span>
