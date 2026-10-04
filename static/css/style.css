@@ -704,3 +704,93 @@ body.rtl .brand { flex-direction: row; }
   .detail-photo { border: none; background: #fff; }
   .detail-photo img { max-height: 65vh; object-fit: contain; }
 }
+
+
+/* ---------- Factory invoice import & exchange rates ---------- */
+.code-input { text-transform: uppercase; }
+.rates-table, .invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  font-size: 13px;
+}
+.rates-table { margin-top: 24px; }
+.rates-table th, .rates-table td,
+.invoice-table th, .invoice-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+  vertical-align: middle;
+}
+.rates-table th, .invoice-table th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  background: #F1F1F1;
+  position: sticky;
+  top: 0;
+}
+.num { font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.wrap { max-width: 260px; }
+.preview-wrap { max-width: 1100px; margin: 0 auto; }
+.preview-wrap h1 {
+  font-family: 'Archivo Expanded', sans-serif;
+  font-weight: 800;
+  font-size: 26px;
+  margin-bottom: 14px;
+}
+.summary-row { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 14px; margin-bottom: 14px; }
+.summary-row b { font-weight: 600; color: var(--ink-soft); margin-inline-end: 4px; }
+.notice {
+  background: #F1F1F1;
+  border: 1px solid #DDDDDD;
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.notice-warn { border-inline-start: 4px solid var(--gold); }
+.currency-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 16px 0; font-size: 14px; }
+.currency-form select {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 14px;
+}
+.rate-line { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-soft); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.inv-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block; }
+.id-input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  padding: 5px 7px;
+  width: 110px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.is-skipped { opacity: 0.55; }
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  font-weight: 600;
+  margin-inline-start: 4px;
+}
+.confirm-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0;
+  background: var(--canvas);
+  border-top: 1px solid var(--line);
+}
+.confirm-bar .submit-btn { margin-top: 0; }

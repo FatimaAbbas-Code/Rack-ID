@@ -3,11 +3,14 @@ import io
 import json
 import os
 import re
+import shutil
+import tempfile
 import time
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -19,10 +22,12 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, session, Response, abort
+    flash, jsonify, session, Response, abort, send_file
 )
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+
+import invoice_import
 
 try:  # optional — only used to draw Arabic text on the shareable card
     import arabic_reshaper
@@ -134,6 +139,20 @@ def init_db():
             ADD COLUMN IF NOT EXISTS purchase_qty INTEGER,
             ADD COLUMN IF NOT EXISTS sale_qty INTEGER,
             ADD COLUMN IF NOT EXISTS stock INTEGER
+    ''')
+    # Free-text descriptors (visible to everyone signed in) and the admin-set
+    # exchange rates used when importing priced factory invoices.
+    cur.execute('''
+        ALTER TABLE items
+            ADD COLUMN IF NOT EXISTS colors TEXT,
+            ADD COLUMN IF NOT EXISTS sizes TEXT
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS currency_rates (
+            code TEXT PRIMARY KEY,
+            rate NUMERIC(14,6) NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
     ''')
     conn.commit()
     cur.close()
@@ -336,7 +355,7 @@ def all_items_with_images():
     cur = conn.cursor()
     cur.execute(
         'SELECT id, name, category, image_key, thumb_key, date_added, '
-        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock '
+        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes '
         'FROM items ORDER BY date_added DESC'
     )
     items = rows_to_dicts(cur, cur.fetchall())
@@ -364,7 +383,7 @@ def all_items_with_image_keys():
     cur = conn.cursor()
     cur.execute(
         'SELECT id, name, category, date_added, '
-        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock '
+        'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes '
         'FROM items ORDER BY date_added DESC'
     )
     items = rows_to_dicts(cur, cur.fetchall())
@@ -411,19 +430,15 @@ def make_thumbnail_bytes(file_bytes, size=(500, 500)):
         return out.getvalue()
 
 
-def save_image(file):
+def store_image_bytes(file_bytes, ext, content_type=None, s3=None):
     """Upload an image + thumbnail to R2. Returns (image_key, thumb_key)."""
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    file_bytes = file.read()
     unique_name = uuid.uuid4().hex
-
     image_key = f'items/{unique_name}.{ext}'
     thumb_key = f'items/thumbs/{unique_name}.jpg'
 
-    content_type = file.mimetype or f'image/{ext}'
-    s3 = get_r2_client()
-    s3.put_object(Bucket=R2_BUCKET_NAME, Key=image_key, Body=file_bytes, ContentType=content_type)
-
+    s3 = s3 or get_r2_client()
+    s3.put_object(Bucket=R2_BUCKET_NAME, Key=image_key, Body=file_bytes,
+                  ContentType=content_type or f'image/{ext}')
     try:
         thumb_bytes = make_thumbnail_bytes(file_bytes)
         s3.put_object(Bucket=R2_BUCKET_NAME, Key=thumb_key, Body=thumb_bytes, ContentType='image/jpeg')
@@ -431,6 +446,12 @@ def save_image(file):
         thumb_key = image_key  # fallback: reuse original if thumbnailing fails
 
     return image_key, thumb_key
+
+
+def save_image(file):
+    """Upload a submitted image file + thumbnail to R2."""
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    return store_image_bytes(file.read(), ext, file.mimetype)
 
 
 def delete_keys(image_key, thumb_key):
@@ -594,6 +615,59 @@ TRANSLATIONS = {
         'stock_label': 'Stock',
         'not_set': '—',
         'price_qty_invalid': 'Check the price/quantity fields — they must be zero or more.',
+        'colors_label': 'Colors',
+        'sizes_label': 'Sizes',
+        'colors_placeholder': 'e.g. BLACK 100, WHITE 100',
+        'sizes_placeholder': 'e.g. M-3XL',
+        'manage_invoice_title': 'Factory invoice',
+        'manage_invoice_hint': 'Create products automatically from a supplier proforma invoice (PDF).',
+        'manage_invoice_btn': 'Import invoice',
+        'manage_rates_title': 'Exchange rates',
+        'manage_rates_hint': 'Set how foreign currencies convert to KWD.',
+        'manage_rates_btn': 'Edit rates',
+        'rates_title': 'Exchange rates',
+        'rates_sub': 'How many KWD one unit of each currency is worth. Used when importing factory invoices.',
+        'rates_code': 'Currency code',
+        'rates_code_hint': '(3 letters, e.g. CNY)',
+        'rates_value': 'KWD per 1 unit',
+        'rates_save': 'Save rate',
+        'rates_none': 'No exchange rates set yet.',
+        'rates_updated': 'Updated',
+        'rate_saved': 'Exchange rate saved.',
+        'rate_deleted': 'Exchange rate removed.',
+        'rate_bad_code': 'Enter a 3-letter currency code, for example CNY.',
+        'rate_bad_value': 'Enter a rate greater than zero.',
+        'invoice_title': 'Import a factory invoice',
+        'invoice_sub': "Upload the supplier's proforma invoice (PDF). You will review every product before anything is created. Excel invoices are not supported yet.",
+        'invoice_field': 'Invoice file (PDF)',
+        'invoice_btn': 'Read invoice',
+        'invoice_need_pdf': 'Please choose a PDF file.',
+        'invoice_parse_failed': 'Could not read that invoice.',
+        'invoice_batch_expired': 'This review expired — please upload the invoice again.',
+        'invoice_none_selected': 'Nothing selected to create.',
+        'invoice_failed': 'Could not create the products. Nothing was saved — please try again.',
+        'invoice_done': 'Created {created} product(s). Skipped {skipped}.',
+        'preview_title': 'Review invoice',
+        'preview_invoice': 'Invoice',
+        'preview_delivery': 'Delivery',
+        'preview_styles': 'Styles',
+        'preview_units': 'Units',
+        'preview_currency': 'Invoice currency',
+        'preview_apply': 'Apply',
+        'preview_none_option': '— none —',
+        'preview_rate_line': 'Rate used: 1 {code} = {rate} KWD',
+        'preview_no_rate': 'No exchange rate is set for this currency, so purchase prices will not be imported.',
+        'preview_no_rate_link': 'Set an exchange rate',
+        'preview_totals_ok': 'Quantities match the invoice total.',
+        'col_use': 'Use',
+        'col_photo': 'Photo',
+        'col_invoice_price': 'Invoice price',
+        'col_kwd_price': 'Purchase price (KWD)',
+        'preview_exists': 'Already in catalog',
+        'preview_nophoto': 'No photo',
+        'preview_confirm': 'Create selected products',
+        'preview_cancel': 'Cancel',
+        'preview_stock_note': 'Stock is left empty — set it when the goods arrive. Names and categories can be added later with Edit.',
         'print_btn': 'Print',
         'save_image_btn': 'Save as image',
         'error_title': 'Something went wrong',
@@ -688,6 +762,59 @@ TRANSLATIONS = {
         'stock_label': 'مخزون',
         'not_set': '—',
         'price_qty_invalid': 'تحقق من حقول السعر/الكمية — يجب أن تكون صفرًا أو أكثر.',
+        'colors_label': 'الألوان',
+        'sizes_label': 'المقاسات',
+        'colors_placeholder': 'مثال: BLACK 100, WHITE 100',
+        'sizes_placeholder': 'مثال: M-3XL',
+        'manage_invoice_title': 'فاتورة المصنع',
+        'manage_invoice_hint': 'إنشاء المنتجات تلقائيًا من فاتورة مبدئية للمورّد (PDF).',
+        'manage_invoice_btn': 'استيراد فاتورة',
+        'manage_rates_title': 'أسعار الصرف',
+        'manage_rates_hint': 'حدّد كيف تتحوّل العملات الأجنبية إلى الدينار الكويتي.',
+        'manage_rates_btn': 'تعديل الأسعار',
+        'rates_title': 'أسعار الصرف',
+        'rates_sub': 'كم دينارًا كويتيًا تساوي وحدة واحدة من كل عملة. تُستخدم عند استيراد فواتير المصنع.',
+        'rates_code': 'رمز العملة',
+        'rates_code_hint': '(3 أحرف، مثل CNY)',
+        'rates_value': 'دينار كويتي لكل وحدة',
+        'rates_save': 'حفظ السعر',
+        'rates_none': 'لم يتم تحديد أسعار صرف بعد.',
+        'rates_updated': 'آخر تحديث',
+        'rate_saved': 'تم حفظ سعر الصرف.',
+        'rate_deleted': 'تم حذف سعر الصرف.',
+        'rate_bad_code': 'أدخل رمز عملة من 3 أحرف، مثل CNY.',
+        'rate_bad_value': 'أدخل سعرًا أكبر من صفر.',
+        'invoice_title': 'استيراد فاتورة مصنع',
+        'invoice_sub': 'ارفع الفاتورة المبدئية للمورّد (PDF). ستراجع كل منتج قبل إنشاء أي شيء. فواتير Excel غير مدعومة بعد.',
+        'invoice_field': 'ملف الفاتورة (PDF)',
+        'invoice_btn': 'قراءة الفاتورة',
+        'invoice_need_pdf': 'الرجاء اختيار ملف PDF.',
+        'invoice_parse_failed': 'تعذّرت قراءة هذه الفاتورة.',
+        'invoice_batch_expired': 'انتهت صلاحية هذه المراجعة — الرجاء رفع الفاتورة مرة أخرى.',
+        'invoice_none_selected': 'لم يتم اختيار أي منتج للإنشاء.',
+        'invoice_failed': 'تعذّر إنشاء المنتجات. لم يتم حفظ أي شيء — الرجاء المحاولة مرة أخرى.',
+        'invoice_done': 'تم إنشاء {created} منتج. وتم تجاهل {skipped}.',
+        'preview_title': 'مراجعة الفاتورة',
+        'preview_invoice': 'الفاتورة',
+        'preview_delivery': 'التسليم',
+        'preview_styles': 'الموديلات',
+        'preview_units': 'القطع',
+        'preview_currency': 'عملة الفاتورة',
+        'preview_apply': 'تطبيق',
+        'preview_none_option': '— بدون —',
+        'preview_rate_line': 'السعر المستخدم: 1 {code} = {rate} د.ك',
+        'preview_no_rate': 'لا يوجد سعر صرف لهذه العملة، لذلك لن يتم استيراد أسعار الشراء.',
+        'preview_no_rate_link': 'تحديد سعر صرف',
+        'preview_totals_ok': 'الكميات تطابق إجمالي الفاتورة.',
+        'col_use': 'استخدام',
+        'col_photo': 'الصورة',
+        'col_invoice_price': 'سعر الفاتورة',
+        'col_kwd_price': 'سعر الشراء (د.ك)',
+        'preview_exists': 'موجود مسبقًا في الكتالوج',
+        'preview_nophoto': 'بلا صورة',
+        'preview_confirm': 'إنشاء المنتجات المحددة',
+        'preview_cancel': 'إلغاء',
+        'preview_stock_note': 'يُترك المخزون فارغًا — حدّده عند وصول البضاعة. يمكن إضافة الأسماء والفئات لاحقًا عبر التعديل.',
         'print_btn': 'طباعة',
         'save_image_btn': 'حفظ كصورة',
         'error_title': 'حدث خطأ ما',
@@ -903,13 +1030,14 @@ def export_csv():
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_urls']
-                     + list(INVENTORY_FIELDS))
+                     + list(INVENTORY_FIELDS) + ['colors', 'sizes'])
     for it in items:
         added = it['date_added'].isoformat() if it['date_added'] else ''
         writer.writerow([
             it['id'], it['name'] or '', it['category'] or '', added,
             len(it['images']), ' | '.join(i['image_url'] for i in it['images']),
-        ] + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS])
+        ] + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS]
+          + [it['colors'] or '', it['sizes'] or ''])
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
     # UTF-8 BOM so Excel reads Arabic names correctly.
     body = '﻿' + buf.getvalue()
@@ -935,6 +1063,8 @@ def build_backup_payload():
             # quantities stay native JSON numbers.
             **{f: (str(it[f]) if it[f] is not None else None) for f in INVENTORY_MONEY_FIELDS},
             **{f: it[f] for f in INVENTORY_QTY_FIELDS},
+            'colors': it['colors'],
+            'sizes': it['sizes'],
         } for it in items],
     }
 
@@ -960,8 +1090,9 @@ def export_xlsx():
     ws.title = 'Catalog'
     ws.sheet_view.rightToLeft = (session.get('lang', DEFAULT_LANG) == 'ar')
 
-    inv_headers = ['Purchase price', 'Sale price', 'Cost', 'Purchase qty', 'Sale qty', 'Stock']
-    fixed_count = 5 + len(inv_headers)  # ID, Name, Category, Date added, Photos + the 6 above
+    inv_headers = ['Purchase price', 'Sale price', 'Cost', 'Purchase qty', 'Sale qty', 'Stock',
+                   'Colors', 'Sizes']
+    fixed_count = 5 + len(inv_headers)  # ID, Name, Category, Date added, Photos + the rest
     headers = ['ID', 'Name', 'Category', 'Date added', 'Photos'] + inv_headers
     headers += [f'Photo {i}' for i in range(1, max_photos + 1)]
     ws.append(headers)
@@ -979,6 +1110,7 @@ def export_xlsx():
         row_values = [it['id'], it['name'] or '', it['category'] or '', added, len(it['images'])]
         row_values += [float(it[f]) if f in INVENTORY_MONEY_FIELDS and it[f] is not None
                        else it[f] for f in INVENTORY_FIELDS]
+        row_values += [it['colors'] or '', it['sizes'] or '']
         ws.append(row_values)
         row = ws.max_row
         for i, img in enumerate(it['images'][:max_photos]):
@@ -986,7 +1118,7 @@ def export_xlsx():
             cell.hyperlink = img['image_url']
             cell.font = link_font
 
-    widths = [16, 34, 22, 14, 8, 13, 13, 13, 12, 12, 10]
+    widths = [16, 34, 22, 14, 8, 13, 13, 13, 12, 12, 10, 34, 14]
     for i, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = width
     for i in range(fixed_count + 1, fixed_count + 1 + max_photos):
@@ -1011,7 +1143,7 @@ def export_zip():
     index = io.StringIO()
     writer = csv.writer(index)
     writer.writerow(['id', 'name', 'category', 'date_added', 'photo_count', 'photo_files']
-                     + list(INVENTORY_FIELDS))
+                     + list(INVENTORY_FIELDS) + ['colors', 'sizes'])
 
     mem = io.BytesIO()
     with zipfile.ZipFile(mem, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -1030,7 +1162,8 @@ def export_zip():
             added = it['date_added'].isoformat() if it['date_added'] else ''
             writer.writerow([it['id'], it['name'] or '', it['category'] or '',
                              added, len(it['image_keys']), ' | '.join(saved)]
-                             + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS])
+                             + [it[f] if it[f] is not None else '' for f in INVENTORY_FIELDS]
+                             + [it['colors'] or '', it['sizes'] or ''])
         zf.writestr('catalog.csv', '﻿' + index.getvalue())
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
@@ -1095,13 +1228,14 @@ def import_from_json(raw):
         added_at = _parse_dt(rec.get('date_added'))
         cur.execute(
             'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
-            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (iid, rec.get('name') or '', rec.get('category') or '',
              parsed[0][1], parsed[0][2], added_at,
              lenient_decimal(rec.get('purchase_price')), lenient_decimal(rec.get('sale_price')),
              lenient_decimal(rec.get('cost')), lenient_int(rec.get('purchase_qty')),
-             lenient_int(rec.get('sale_qty')), lenient_int(rec.get('stock')))
+             lenient_int(rec.get('sale_qty')), lenient_int(rec.get('stock')),
+             rec.get('colors') or None, rec.get('sizes') or None)
         )
         for pos, ik, tk in parsed:
             cur.execute(
@@ -1160,13 +1294,14 @@ def import_from_zip(raw):
         added_at = _parse_dt(row.get('date_added'))
         cur.execute(
             'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
-            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (iid, row.get('name') or '', row.get('category') or '',
              saved[0][0], saved[0][1], added_at,
              lenient_decimal(row.get('purchase_price')), lenient_decimal(row.get('sale_price')),
              lenient_decimal(row.get('cost')), lenient_int(row.get('purchase_qty')),
-             lenient_int(row.get('sale_qty')), lenient_int(row.get('stock')))
+             lenient_int(row.get('sale_qty')), lenient_int(row.get('stock')),
+             (row.get('colors') or None), (row.get('sizes') or None))
         )
         for pos, (ik, tk) in enumerate(saved):
             cur.execute(
@@ -1232,6 +1367,281 @@ def import_latest():
 # ---------------------------------------------------------------------------
 # Routes — admin only
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Exchange rates (admin) — used when importing priced factory invoices
+# ---------------------------------------------------------------------------
+def get_rates():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT code, rate, updated_at FROM currency_rates ORDER BY code')
+    rows = rows_to_dicts(cur, cur.fetchall())
+    cur.close()
+    conn.close()
+    return rows
+
+
+@app.route('/rates', methods=['GET', 'POST'])
+@login_required
+def rates():
+    if request.method == 'POST':
+        code = (request.form.get('code') or '').strip().upper()
+        if not re.fullmatch(r'[A-Z]{3}', code) or code == 'KWD':
+            flash(t('rate_bad_code'), 'error')
+            return redirect(url_for('rates'))
+        try:
+            rate = Decimal((request.form.get('rate') or '').strip())
+        except InvalidOperation:
+            rate = None
+        if rate is None or rate <= 0 or rate >= 100000:
+            flash(t('rate_bad_value'), 'error')
+            return redirect(url_for('rates'))
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            'INSERT INTO currency_rates (code, rate, updated_at) VALUES (%s, %s, %s) '
+            'ON CONFLICT (code) DO UPDATE SET rate = EXCLUDED.rate, updated_at = EXCLUDED.updated_at',
+            (code, rate, datetime.now(timezone.utc))
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash(t('rate_saved'), 'success')
+        return redirect(url_for('rates'))
+    return render_template('rates.html', rates=get_rates())
+
+
+@app.route('/rates/<code>/delete', methods=['POST'])
+@login_required
+def delete_rate(code):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM currency_rates WHERE code = %s', (code.upper(),))
+    conn.commit()
+    cur.close()
+    conn.close()
+    flash(t('rate_deleted'), 'success')
+    return redirect(url_for('rates'))
+
+
+# ---------------------------------------------------------------------------
+# Factory invoice import (admin): upload -> stage on disk -> review -> create
+# ---------------------------------------------------------------------------
+STAGING_ROOT = os.path.join(tempfile.gettempdir(), 'js_invoice_imports')
+_BATCH_RE = re.compile(r'^[0-9a-f]{32}$')
+_FILS = Decimal('0.001')
+
+
+def _batch_dir(batch_id):
+    if not _BATCH_RE.match(batch_id or ''):
+        abort(404)
+    return os.path.join(STAGING_ROOT, batch_id)
+
+
+def _purge_old_batches(max_age_seconds=12 * 3600):
+    if not os.path.isdir(STAGING_ROOT):
+        return
+    cutoff = time.time() - max_age_seconds
+    for name in os.listdir(STAGING_ROOT):
+        path = os.path.join(STAGING_ROOT, name)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def _load_batch(batch_id):
+    path = os.path.join(_batch_dir(batch_id), 'manifest.json')
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding='utf-8') as fh:
+        return json.load(fh)
+
+
+def _rate_lookup():
+    return {r['code']: r['rate'] for r in get_rates()}
+
+
+def _kwd_price(unit_price, rate):
+    if unit_price in (None, '') or rate is None:
+        return None
+    return (Decimal(str(unit_price)) * rate).quantize(_FILS, rounding=ROUND_HALF_UP)
+
+
+@app.route('/import/invoice', methods=['GET', 'POST'])
+@login_required
+def import_invoice():
+    if request.method == 'POST':
+        f = request.files.get('file')
+        if not f or not f.filename.lower().endswith('.pdf'):
+            flash(t('invoice_need_pdf'), 'error')
+            return redirect(url_for('import_invoice'))
+        try:
+            parsed = invoice_import.parse_factory_pdf(f.read())
+        except invoice_import.InvoiceError as exc:
+            flash(f"{t('invoice_parse_failed')} {exc}", 'error')
+            return redirect(url_for('import_invoice'))
+
+        _purge_old_batches()
+        batch_id = uuid.uuid4().hex
+        bdir = _batch_dir(batch_id)
+        os.makedirs(bdir, exist_ok=True)
+        rows = []
+        for n, row in enumerate(parsed['rows']):
+            if row['photo']:
+                with open(os.path.join(bdir, f'{n}.jpg'), 'wb') as fh:
+                    fh.write(row['photo'])
+                with open(os.path.join(bdir, f'{n}_t.jpg'), 'wb') as fh:
+                    fh.write(invoice_import.make_preview_thumb(row['photo']))
+            rows.append({
+                'seq': row['seq'], 'style': row['style'], 'colors': row['colors'],
+                'sizes': row['sizes'], 'qty': row['qty'],
+                'unit_price': str(row['unit_price']) if row['unit_price'] is not None else None,
+                'has_photo': bool(row['photo']),
+            })
+        with open(os.path.join(bdir, 'manifest.json'), 'w', encoding='utf-8') as fh:
+            json.dump({'meta': parsed['meta'], 'warnings': parsed['warnings'], 'rows': rows},
+                      fh, ensure_ascii=False)
+        return redirect(url_for('invoice_preview', batch_id=batch_id))
+    return render_template('invoice_upload.html')
+
+
+@app.route('/import/invoice/<batch_id>')
+@login_required
+def invoice_preview(batch_id):
+    manifest = _load_batch(batch_id)
+    if not manifest:
+        flash(t('invoice_batch_expired'), 'error')
+        return redirect(url_for('import_invoice'))
+
+    rates_map = _rate_lookup()
+    currency = (request.args.get('currency') or manifest['meta'].get('currency') or '').upper()
+    if not re.fullmatch(r'[A-Z]{3}', currency):
+        currency = ''
+    rate = rates_map.get(currency)
+
+    rows = manifest['rows']
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ','.join(['%s'] * len(rows))
+    cur.execute(f'SELECT id FROM items WHERE id IN ({placeholders})', [r['style'] for r in rows])
+    existing = {row[0] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+
+    view_rows = []
+    for n, row in enumerate(rows):
+        view_rows.append({
+            **row, 'n': n,
+            'exists': row['style'] in existing,
+            'kwd_price': _kwd_price(row['unit_price'], rate),
+        })
+    detected = {manifest['meta']['currency']} if manifest['meta'].get('currency') else set()
+    return render_template(
+        'invoice_preview.html', batch_id=batch_id, meta=manifest['meta'],
+        warnings=manifest['warnings'], rows=view_rows, currency=currency,
+        rate=rate, currency_options=sorted(set(rates_map) | detected),
+        creatable=sum(1 for r in view_rows if r['has_photo'] and not r['exists']),
+    )
+
+
+@app.route('/import/invoice/<batch_id>/photo/<int:n>')
+@login_required
+def invoice_photo(batch_id, n):
+    path = os.path.join(_batch_dir(batch_id), f'{n}_t.jpg')
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, mimetype='image/jpeg', max_age=3600)
+
+
+@app.route('/import/invoice/<batch_id>/confirm', methods=['POST'])
+@login_required
+def invoice_confirm(batch_id):
+    manifest = _load_batch(batch_id)
+    if not manifest:
+        flash(t('invoice_batch_expired'), 'error')
+        return redirect(url_for('import_invoice'))
+    bdir = _batch_dir(batch_id)
+    rows = manifest['rows']
+
+    currency = (request.form.get('currency') or '').upper()
+    rate = _rate_lookup().get(currency) if re.fullmatch(r'[A-Z]{3}', currency) else None
+
+    chosen, seen = [], set()
+    for n, row in enumerate(rows):
+        if not request.form.get(f'use_{n}'):
+            continue
+        item_id = (request.form.get(f'id_{n}') or '').strip()
+        photo_path = os.path.join(bdir, f'{n}.jpg')
+        if not item_id or len(item_id) > 100 or item_id in seen or not os.path.isfile(photo_path):
+            continue
+        seen.add(item_id)
+        chosen.append((n, item_id, row, photo_path))
+    if not chosen:
+        flash(t('invoice_none_selected'), 'error')
+        return redirect(url_for('invoice_preview', batch_id=batch_id, currency=currency))
+
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ','.join(['%s'] * len(chosen))
+    cur.execute(f'SELECT id FROM items WHERE id IN ({placeholders})', [c[1] for c in chosen])
+    taken = {r[0] for r in cur.fetchall()}
+    chosen = [c for c in chosen if c[1] not in taken]
+    skipped = len(rows) - len(chosen)
+    if not chosen:
+        cur.close()
+        conn.close()
+        flash(t('invoice_none_selected'), 'error')
+        return redirect(url_for('invoice_preview', batch_id=batch_id, currency=currency))
+
+    s3 = get_r2_client()
+
+    def upload_one(entry):
+        with open(entry[3], 'rb') as fh:
+            return store_image_bytes(fh.read(), 'jpg', 'image/jpeg', s3)
+
+    uploaded = []
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            uploaded = list(pool.map(upload_one, chosen))
+        now = datetime.now(timezone.utc)
+        item_sql, item_params, img_sql, img_params = [], [], [], []
+        for (n, item_id, row, _), (image_key, thumb_key) in zip(chosen, uploaded):
+            item_sql.append('(' + ', '.join(['%s'] * 14) + ')')
+            item_params += [
+                item_id, '', '', image_key, thumb_key, now,
+                _kwd_price(row['unit_price'], rate), None, None,
+                row['qty'], None, None, row['colors'] or None, row['sizes'] or None,
+            ]
+            img_sql.append('(%s, %s, %s, %s, %s, %s)')
+            img_params += [uuid.uuid4().hex, item_id, image_key, thumb_key, 0, now]
+        cur.execute(
+            'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes) '
+            'VALUES ' + ', '.join(item_sql), item_params
+        )
+        cur.execute(
+            'INSERT INTO item_images (id, item_id, image_key, thumb_key, position, date_added) '
+            'VALUES ' + ', '.join(img_sql), img_params
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        for image_key, thumb_key in uploaded:      # don't leave orphaned photos in R2
+            delete_keys(image_key, thumb_key)
+        cur.close()
+        conn.close()
+        app.logger.exception('invoice import failed')
+        flash(t('invoice_failed'), 'error')
+        return redirect(url_for('invoice_preview', batch_id=batch_id, currency=currency))
+    cur.close()
+    conn.close()
+
+    shutil.rmtree(bdir, ignore_errors=True)
+    flash(t('invoice_done').format(created=len(chosen), skipped=skipped), 'success')
+    return redirect(url_for('index'))
+
+
 @app.route('/manage')
 @login_required
 def manage():
@@ -1251,6 +1661,8 @@ def upload():
         item_id = request.form.get('item_id', '').strip()
         name = request.form.get('name', '').strip()
         category = request.form.get('category', '').strip()
+        colors = request.form.get('colors', '').strip()
+        sizes = request.form.get('sizes', '').strip()
         files = [f for f in request.files.getlist('images') if f and f.filename]
 
         if not item_id:
@@ -1280,11 +1692,11 @@ def upload():
         cur = conn.cursor()
         cur.execute(
             'INSERT INTO items (id, name, category, image_key, thumb_key, date_added, '
-            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            'purchase_price, sale_price, cost, purchase_qty, sale_qty, stock, colors, sizes) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (item_id, name, category, cover_image, cover_thumb, now,
              inv['purchase_price'], inv['sale_price'], inv['cost'],
-             inv['purchase_qty'], inv['sale_qty'], inv['stock'])
+             inv['purchase_qty'], inv['sale_qty'], inv['stock'], colors or None, sizes or None)
         )
         for position, (image_key, thumb_key) in enumerate(saved):
             cur.execute(
@@ -1311,6 +1723,8 @@ def edit_item(item_id):
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         category = request.form.get('category', '').strip()
+        colors = request.form.get('colors', '').strip()
+        sizes = request.form.get('sizes', '').strip()
         remove_ids = set(request.form.getlist('remove'))
         new_files = [f for f in request.files.getlist('images') if f and f.filename]
 
@@ -1352,10 +1766,11 @@ def edit_item(item_id):
         cur.execute(
             'UPDATE items SET name = %s, category = %s, image_key = %s, thumb_key = %s, '
             'purchase_price = %s, sale_price = %s, cost = %s, '
-            'purchase_qty = %s, sale_qty = %s, stock = %s WHERE id = %s',
+            'purchase_qty = %s, sale_qty = %s, stock = %s, colors = %s, sizes = %s WHERE id = %s',
             (name, category, cover[0], cover[1],
              inv['purchase_price'], inv['sale_price'], inv['cost'],
-             inv['purchase_qty'], inv['sale_qty'], inv['stock'], item_id)
+             inv['purchase_qty'], inv['sale_qty'], inv['stock'],
+             colors or None, sizes or None, item_id)
         )
         conn.commit()
         cur.close()

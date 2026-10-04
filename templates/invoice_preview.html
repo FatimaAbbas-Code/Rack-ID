@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ t('preview_title') }}{% endblock %}
+{% block content %}
+
+<section class="preview-wrap">
+  <h1>{{ t('preview_title') }}</h1>
+
+  <div class="summary-row">
+    {% if meta.invoice_no %}<span><b>{{ t('preview_invoice') }}</b> {{ meta.invoice_no }}</span>{% endif %}
+    {% if meta.delivery %}<span><b>{{ t('preview_delivery') }}</b> {{ meta.delivery }}</span>{% endif %}
+    <span><b>{{ t('preview_styles') }}</b> {{ rows|length }}</span>
+    <span><b>{{ t('preview_units') }}</b> {{ meta.total_qty_parsed }}</span>
+  </div>
+
+  {% for w in warnings %}<div class="notice notice-warn">{{ w }}</div>{% endfor %}
+  {% if meta.total_qty_invoice is defined and meta.total_qty_invoice == meta.total_qty_parsed %}
+  <div class="notice">{{ t('preview_totals_ok') }}</div>
+  {% endif %}
+
+  <form method="get" action="{{ url_for('invoice_preview', batch_id=batch_id) }}" class="currency-form">
+    <label for="currency">{{ t('preview_currency') }}</label>
+    <select name="currency" id="currency">
+      <option value="">{{ t('preview_none_option') }}</option>
+      {% for code in currency_options %}
+      <option value="{{ code }}" {{ 'selected' if code == currency else '' }}>{{ code }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="tool-btn">{{ t('preview_apply') }}</button>
+    {% if rate %}
+    <span class="rate-line">{{ t('preview_rate_line').format(code=currency, rate=rate) }}</span>
+    {% endif %}
+  </form>
+  {% if not rate %}
+  <div class="notice notice-warn">
+    {{ t('preview_no_rate') }}
+    <a href="{{ url_for('rates') }}" target="_blank" rel="noopener">{{ t('preview_no_rate_link') }}</a>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('invoice_confirm', batch_id=batch_id) }}">
+    <input type="hidden" name="currency" value="{{ currency }}">
+    <div class="table-wrap">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="toggleAll" checked title="{{ t('col_use') }}"></th>
+            <th>{{ t('col_photo') }}</th>
+            <th>{{ t('field_id') }}</th>
+            <th>{{ t('colors_label') }}</th>
+            <th>{{ t('sizes_label') }}</th>
+            <th>{{ t('purchase_qty_label') }}</th>
+            <th>{{ t('col_invoice_price') }}</th>
+            <th>{{ t('col_kwd_price') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{{ 'is-skipped' if r.exists or not r.has_photo else '' }}">
+            <td>
+              <input type="checkbox" class="row-use" name="use_{{ r.n }}" value="1"
+                     {% if not r.has_photo %}disabled{% elif not r.exists %}checked{% endif %}>
+            </td>
+            <td>
+              {% if r.has_photo %}
+              <img class="inv-thumb" loading="lazy" alt="" src="{{ url_for('invoice_photo', batch_id=batch_id, n=r.n) }}">
+              {% else %}<span class="badge">{{ t('preview_nophoto') }}</span>{% endif %}
+            </td>
+            <td>
+              <input type="text" class="id-input" name="id_{{ r.n }}" value="{{ r.style }}" maxlength="100" {{ 'disabled' if not r.has_photo else '' }}>
+              {% if r.exists %}<span class="badge">{{ t('preview_exists') }}</span>{% endif %}
+            </td>
+            <td class="wrap">{{ r.colors }}</td>
+            <td class="num">{{ r.sizes }}</td>
+            <td class="num">{{ r.qty if r.qty is not none else '—' }}</td>
+            <td class="num">{% if r.unit_price %}{{ r.unit_price }} {{ meta.currency or '' }}{% else %}—{% endif %}</td>
+            <td class="num">{{ r.kwd_price if r.kwd_price is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="form-sub">{{ t('preview_stock_note') }}</p>
+    <div class="confirm-bar">
+      <button type="submit" class="submit-btn">{{ t('preview_confirm') }} (<span id="selCount">{{ creatable }}</span>)</button>
+      <a class="tool-btn" href="{{ url_for('manage') }}">{{ t('preview_cancel') }}</a>
+    </div>
+  </form>
+</section>
+
+<script>
+(function () {
+  var all = document.getElementById('toggleAll');
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.row-use'));
+  var counter = document.getElementById('selCount');
+  function refresh() {
+    counter.textContent = boxes.filter(function (b) { return b.checked; }).length;
+  }
+  all.addEventListener('change', function () {
+    boxes.forEach(function (b) { if (!b.disabled) b.checked = all.checked; });
+    refresh();
+  });
+  boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+  refresh();
+})();
+</script>
+
+{% endblock %}

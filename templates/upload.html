@@ -22,6 +22,17 @@
       <input type="text" name="category" placeholder="e.g. Jackets">
     </label>
 
+    <div class="field-grid">
+      <label class="field">
+        <span>{{ t('colors_label') }} <em>{{ t('field_optional') }}</em></span>
+        <input type="text" name="colors" placeholder="{{ t('colors_placeholder') }}">
+      </label>
+      <label class="field">
+        <span>{{ t('sizes_label') }} <em>{{ t('field_optional') }}</em></span>
+        <input type="text" name="sizes" placeholder="{{ t('sizes_placeholder') }}">
+      </label>
+    </div>
+
     <h2 class="form-section-heading">{{ t('inventory_section_title') }}</h2>
     <div class="field-grid">
       <label class="field">

@@ -23,6 +23,18 @@
     </div>
 
     <div class="manage-card">
+      <h2>{{ t('manage_invoice_title') }}</h2>
+      <p class="manage-hint">{{ t('manage_invoice_hint') }}</p>
+      <a class="manage-action" href="{{ url_for('import_invoice') }}">{{ t('manage_invoice_btn') }}</a>
+    </div>
+
+    <div class="manage-card">
+      <h2>{{ t('manage_rates_title') }}</h2>
+      <p class="manage-hint">{{ t('manage_rates_hint') }}</p>
+      <a class="manage-action" href="{{ url_for('rates') }}">{{ t('manage_rates_btn') }}</a>
+    </div>
+
+    <div class="manage-card">
       <h2>{{ t('import_title') }}</h2>
       <p class="manage-hint">{{ t('manage_import_hint') }}</p>
       <a class="manage-action" href="{{ url_for('import_data') }}">{{ t('import_link') }}</a>

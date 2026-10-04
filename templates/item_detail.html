@@ -30,6 +30,12 @@
     {% if item.category %}
       <div class="detail-row"><span class="detail-key">{{ t('category_label') }}</span><span>{{ item.category }}</span></div>
     {% endif %}
+    {% if item.colors %}
+      <div class="detail-row"><span class="detail-key">{{ t('colors_label') }}</span><span>{{ item.colors }}</span></div>
+    {% endif %}
+    {% if item.sizes %}
+      <div class="detail-row"><span class="detail-key">{{ t('sizes_label') }}</span><span>{{ item.sizes }}</span></div>
+    {% endif %}
     <div class="detail-row"><span class="detail-key">{{ t('added_label') }}</span><span>{{ item.date_added.strftime('%Y-%m-%d') }}</span></div>
 
     {% if is_viewer %}

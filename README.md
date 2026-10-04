@@ -32,6 +32,29 @@ nothing important lives on the app server's own disk.
   Add/Edit item. All optional, entered by hand (no automatic stock
   calculation). Prices are stored as exact fixed-point numbers (3
   decimal places, KWD fils-safe) — never as floating point.
+- **Colors & sizes** — two optional free-text fields per product, shown on
+  the item page to everyone signed in and included in exports.
+- **Factory invoice import** (admin, Manage → *Import invoice*) — upload a
+  supplier proforma invoice (PDF exported from a spreadsheet) and the
+  products are created from it: the **style number becomes the item ID**,
+  the row's photo becomes the product photo, quantity becomes purchase
+  quantity, and colors/sizes are filled in (obvious typos like `BALCK` are
+  fixed, Chinese color names translated). Nothing is created until you
+  review a preview where you can untick rows or edit IDs; IDs that already
+  exist are flagged and skipped. Parsed quantities are checked against the
+  invoice's own TOTAL row. Stock is left empty (the goods haven't arrived
+  yet). Only PDF is supported so far — an Excel version needs a sample file.
+- **Exchange rates** (admin, Manage → *Edit rates*) — set how many KWD one
+  unit of a foreign currency is worth (e.g. `CNY`). Invoice prices are
+  converted with it at import time; with no rate set, prices are simply not
+  imported. No rate is ever assumed.
+
+  *Technical notes:* PDF reading uses [PyMuPDF](https://pymupdf.readthedocs.io),
+  which is licensed AGPL-3.0 (or commercially from Artifex) — fine for an
+  internal tool, but worth knowing before redistributing the app. Importing
+  a large invoice uploads many photos, so `gunicorn.conf.py` raises the
+  worker timeout to 180 s (gunicorn picks it up automatically from the repo
+  root when started as `gunicorn app:app`).
 - **Item page** — photo gallery with arrows, thumbnails, keyboard and
   swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
   and to **Save as image** — a shareable product card (photo + ID +

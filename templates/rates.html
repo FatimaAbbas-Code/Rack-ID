@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ t('rates_title') }}{% endblock %}
+{% block content %}
+
+<section class="form-wrap">
+  <h1>{{ t('rates_title') }}</h1>
+  <p class="form-sub">{{ t('rates_sub') }}</p>
+
+  <form method="post" class="item-form">
+    <div class="field-grid">
+      <label class="field">
+        <span>{{ t('rates_code') }} <em>{{ t('rates_code_hint') }}</em></span>
+        <input type="text" name="code" maxlength="3" required placeholder="CNY" class="code-input" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>{{ t('rates_value') }}</span>
+        <input type="number" name="rate" step="0.000001" min="0" required inputmode="decimal">
+      </label>
+    </div>
+    <button type="submit" class="submit-btn">{{ t('rates_save') }}</button>
+  </form>
+
+  {% if rates %}
+  <table class="rates-table">
+    <thead>
+      <tr>
+        <th>{{ t('rates_code') }}</th>
+        <th>{{ t('rates_value') }}</th>
+        <th>{{ t('rates_updated') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rates %}
+      <tr>
+        <td><strong>{{ r.code }}</strong></td>
+        <td class="num">1 {{ r.code }} = {{ r.rate }} KWD</td>
+        <td class="num">{{ r.updated_at.strftime('%Y-%m-%d') }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_rate', code=r.code) }}" class="inline-form">
+            <button type="submit" class="remove-btn">{{ t('remove_btn') }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="form-sub">{{ t('rates_none') }}</p>
+  {% endif %}
+</section>
+
+{% endblock %}
