@@ -1609,7 +1609,8 @@ def invoice_confirm(batch_id):
         for (n, item_id, row, _), (image_key, thumb_key) in zip(chosen, uploaded):
             item_sql.append('(' + ', '.join(['%s'] * 14) + ')')
             item_params += [
-                item_id, '', '', image_key, thumb_key, now,
+                item_id, (request.form.get(f'name_{n}') or '').strip()[:200], '',
+                image_key, thumb_key, now,
                 _kwd_price(row['unit_price'], rate), None, None,
                 row['qty'], None, None, row['colors'] or None, row['sizes'] or None,
             ]

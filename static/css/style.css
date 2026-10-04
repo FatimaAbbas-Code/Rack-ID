@@ -772,6 +772,14 @@ body.rtl .brand { flex-direction: row; }
   border-radius: var(--radius);
   background: var(--card);
 }
+.name-input {
+  font-size: 13px;
+  padding: 5px 7px;
+  width: 170px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
 .is-skipped { opacity: 0.55; }
 .badge {
   display: inline-block;

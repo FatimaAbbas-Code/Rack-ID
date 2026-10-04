@@ -46,6 +46,7 @@
             <th><input type="checkbox" id="toggleAll" checked title="{{ t('col_use') }}"></th>
             <th>{{ t('col_photo') }}</th>
             <th>{{ t('field_id') }}</th>
+            <th>{{ t('field_name') }}</th>
             <th>{{ t('colors_label') }}</th>
             <th>{{ t('sizes_label') }}</th>
             <th>{{ t('purchase_qty_label') }}</th>
@@ -68,6 +69,9 @@
             <td>
               <input type="text" class="id-input" name="id_{{ r.n }}" value="{{ r.style }}" maxlength="100" {{ 'disabled' if not r.has_photo else '' }}>
               {% if r.exists %}<span class="badge">{{ t('preview_exists') }}</span>{% endif %}
+            </td>
+            <td>
+              <input type="text" class="name-input" name="name_{{ r.n }}" maxlength="200" {{ 'disabled' if not r.has_photo else '' }}>
             </td>
             <td class="wrap">{{ r.colors }}</td>
             <td class="num">{{ r.sizes }}</td>
