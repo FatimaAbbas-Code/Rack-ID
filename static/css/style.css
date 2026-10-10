@@ -106,6 +106,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   border-radius: var(--radius);
   margin-bottom: 20px;
 }
+.viewer-note { transition: opacity 0.4s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease; max-height: 120px; }
+.viewer-note.is-hiding { opacity: 0; max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
 
 /* ---------- Toast messages ---------- */
 .toast-stack {
@@ -504,7 +506,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 .gallery-nav:hover { background: #fff; }
-.gallery-nav::before { font-size: 22px; }
+/* The chevrons are bidi-mirrored characters: in an RTL page the browser flips them by itself, which
+   undid the manual swap below. Force them to render exactly as written. */
+.gallery-nav::before { font-size: 22px; direction: ltr; unicode-bidi: bidi-override; }
 .gallery-prev { inset-inline-start: 8px; }
 .gallery-next { inset-inline-end: 8px; }
 .gallery-prev::before { content: "\2039"; }

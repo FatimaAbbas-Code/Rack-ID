@@ -3,7 +3,15 @@
 {% block content %}
 
 {% if is_viewer and not is_admin %}
-<div class="viewer-note">{{ t('viewer_note') }}</div>
+<div class="viewer-note" id="viewerNote">{{ t('viewer_note') }}</div>
+<script>
+  setTimeout(function () {
+    var n = document.getElementById('viewerNote');
+    if (!n) return;
+    n.classList.add('is-hiding');
+    setTimeout(function () { n.remove(); }, 500);
+  }, 5000);
+</script>
 {% endif %}
 
 <section class="search-band">
