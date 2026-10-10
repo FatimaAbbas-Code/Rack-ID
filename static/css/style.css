@@ -802,3 +802,24 @@ body.rtl .brand { flex-direction: row; }
   border-top: 1px solid var(--line);
 }
 .confirm-bar .submit-btn { margin-top: 0; }
+
+/* ---------- Photographer photo upload ---------- */
+.drop-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 22px;
+  margin-bottom: 8px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.drop-zone.is-over { border-color: var(--gold-dark); background: #FFFBEA; }
+.drop-zone .pick-btn { margin-top: 0; display: inline-block; }
+.check-line { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; font-weight: 500; margin: 10px 0 2px; }
+.check-line input { margin-top: 3px; }
+.st-ok { color: #1F7A3D; font-weight: 600; }
+.st-bad { color: var(--danger); font-weight: 600; }
+.progress { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 14px; }
+.progress-bar { height: 100%; width: 0; background: var(--gold-dark); transition: width .2s; }

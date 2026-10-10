@@ -55,6 +55,19 @@ nothing important lives on the app server's own disk.
   a large invoice uploads many photos, so `gunicorn.conf.py` raises the
   worker timeout to 180 s (gunicorn picks it up automatically from the repo
   root when started as `gunicorn app:app`).
+- **Photographer role** — a third password (`PHOTOGRAPHER_PASSWORD`).
+  The photographer can browse like a viewer and has a **Photos** page
+  (admins can use it too): choose or drop many photos at once, named after
+  the product ID — `4533.jpg`, or `4533_1.jpg`, `4533_2.jpg` /
+  `4533(1).jpg`, `4533(2).jpg` for several photos of one product. Each photo
+  is added to the matching product; **nothing already there is deleted**.
+  A list shows which files matched a product (unknown IDs and unsupported
+  files are flagged and skipped) before anything is uploaded. By default the
+  new photos go first, so they become the main photo in the catalog; untick
+  the box to add them after the existing ones. Photos are converted
+  automatically: JPG/PNG/WEBP in, JPG out, rotated upright, long side capped
+  at 2000 px (the original full-size file is not kept). The photographer
+  cannot add, edit or delete products, or see Manage/exports.
 - **Item page** — photo gallery with arrows, thumbnails, keyboard and
   swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
   and to **Save as image** — a shareable product card (photo + ID +
@@ -197,6 +210,8 @@ only if the store grows well beyond that.
   catalog. Anyone without it only ever sees the sign-in screen. The code
   ships with a placeholder default — always set a real one via the
   environment (locally in `.env`, on the host in its env vars).
+- Set `PHOTOGRAPHER_PASSWORD` (optional) for the photographer. If it is
+  empty the role is off. Use three different passwords.
 - Set `SECRET_KEY` to a long random string — e.g. output from
   `python -c "import secrets; print(secrets.token_hex(32))"`.
 - These are two shared passwords, not individual staff accounts — fine

@@ -24,10 +24,11 @@ from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, session, Response, abort, send_file
 )
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from io import BytesIO
 
 import invoice_import
+import photo_import
 
 try:  # optional — only used to draw Arabic text on the shareable card
     import arabic_reshaper
@@ -51,6 +52,9 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL', '').rstrip('/')
 
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme123')
 VIEWER_PASSWORD = os.environ.get('VIEWER_PASSWORD', 'change-me')
+# Optional: the store photographer's password. No default — the role stays
+# switched off until this is set.
+PHOTOGRAPHER_PASSWORD = os.environ.get('PHOTOGRAPHER_PASSWORD', '')
 SECRET_KEY = os.environ.get('SECRET_KEY', 'change-this-secret-key-before-deploying')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
@@ -423,7 +427,7 @@ def allowed_file(filename):
 
 def make_thumbnail_bytes(file_bytes, size=(500, 500)):
     with Image.open(BytesIO(file_bytes)) as img:
-        img = img.convert('RGB')
+        img = ImageOps.exif_transpose(img).convert('RGB')   # phone photos are stored sideways + EXIF flag
         img.thumbnail(size)
         out = BytesIO()
         img.save(out, 'JPEG', quality=85)
@@ -718,6 +722,33 @@ TRANSLATIONS = {
         'login_required_view': 'Please log in to view the catalog.',
         'login_success': 'Logged in as admin.',
         'login_success_viewer': 'Logged in.',
+        'nav_photos': 'Photos',
+        'photos_title': 'Add product photos',
+        'photos_sub': 'Name each photo with the product ID, e.g. 4533.jpg. For several photos of one product add a number: 4533_1.jpg, 4533_2.jpg or 4533(1).jpg, 4533(2).jpg. The photos are added to the product — nothing already there is deleted.',
+        'photos_choose': 'Choose photos',
+        'photos_drop': 'or drop them here',
+        'photos_front': 'Show these photos first (the first one becomes the main photo in the catalog)',
+        'photos_front_hint': 'Existing photos are kept; they just move after the new ones.',
+        'photos_resize_note': 'Large photos are resized automatically (up to 2000 px) and saved as JPG.',
+        'photos_col_file': 'File',
+        'photos_col_product': 'Product',
+        'photos_col_status': 'Status',
+        'photos_st_ready': 'Ready',
+        'photos_st_unknown': 'No product with this ID',
+        'photos_st_badname': 'File name not understood',
+        'photos_st_badtype': 'JPG, PNG or WEBP only',
+        'photos_st_ambiguous': 'More than one product matches',
+        'photos_st_uploading': 'Uploading…',
+        'photos_st_done': 'Added',
+        'photos_st_failed': 'Failed — try again',
+        'photos_st_toobig': 'File too large (over 50 MB)',
+        'photos_st_invalid': 'Not a valid image',
+        'photos_summary': '{ready} ready · {problems} cannot be uploaded',
+        'photos_upload_btn': 'Upload {n} photos',
+        'photos_clear': 'Clear list',
+        'photos_progress': '{done} of {total} uploaded',
+        'photos_retry': 'Retry failed',
+        'photos_finished': 'Done — {ok} added, {failed} failed.',
         'login_failed': 'Incorrect password.',
         'logout_success': 'Logged out.',
         'viewer_note': 'Viewing as guest — log in as admin to add or edit items.',
@@ -865,6 +896,33 @@ TRANSLATIONS = {
         'login_required_view': 'الرجاء تسجيل الدخول لعرض الكتالوج.',
         'login_success': 'تم تسجيل الدخول كمسؤول.',
         'login_success_viewer': 'تم تسجيل الدخول.',
+        'nav_photos': 'الصور',
+        'photos_title': 'إضافة صور المنتجات',
+        'photos_sub': 'سمِّ كل صورة برقم المنتج، مثال: 4533.jpg. إذا كان للمنتج أكثر من صورة أضف رقمًا: 4533_1.jpg و4533_2.jpg أو 4533(1).jpg و4533(2).jpg. تُضاف الصور إلى المنتج ولا يُحذف أي شيء موجود.',
+        'photos_choose': 'اختر الصور',
+        'photos_drop': 'أو اسحبها وأفلتها هنا',
+        'photos_front': 'اعرض هذه الصور أولًا (الصورة الأولى تصبح الصورة الرئيسية في الكتالوج)',
+        'photos_front_hint': 'الصور الحالية تبقى كما هي وتُنقل بعد الصور الجديدة.',
+        'photos_resize_note': 'الصور الكبيرة تُصغَّر تلقائيًا (حتى 2000 بكسل) وتُحفظ بصيغة JPG.',
+        'photos_col_file': 'الملف',
+        'photos_col_product': 'المنتج',
+        'photos_col_status': 'الحالة',
+        'photos_st_ready': 'جاهزة',
+        'photos_st_unknown': 'لا يوجد منتج بهذا الرقم',
+        'photos_st_badname': 'اسم الملف غير مفهوم',
+        'photos_st_badtype': 'JPG أو PNG أو WEBP فقط',
+        'photos_st_ambiguous': 'أكثر من منتج يطابق الاسم',
+        'photos_st_uploading': 'جارٍ الرفع…',
+        'photos_st_done': 'تمت الإضافة',
+        'photos_st_failed': 'فشل — حاول مرة أخرى',
+        'photos_st_toobig': 'الملف كبير جدًا (أكثر من 50 ميغابايت)',
+        'photos_st_invalid': 'ليست صورة صالحة',
+        'photos_summary': '{ready} جاهزة · {problems} لا يمكن رفعها',
+        'photos_upload_btn': 'رفع {n} صورة',
+        'photos_clear': 'مسح القائمة',
+        'photos_progress': 'تم رفع {done} من {total}',
+        'photos_retry': 'إعادة محاولة الفاشلة',
+        'photos_finished': 'انتهى — أُضيفت {ok}، وفشلت {failed}.',
         'login_failed': 'كلمة المرور غير صحيحة.',
         'logout_success': 'تم تسجيل الخروج.',
         'viewer_note': 'أنت تتصفح كزائر — سجّل الدخول كمسؤول لإضافة العناصر أو تعديلها.',
@@ -895,6 +953,7 @@ def inject_globals():
         is_rtl=(lang == 'ar'),
         is_admin=bool(session.get('is_admin')),
         is_viewer=bool(session.get('is_viewer') or session.get('is_admin')),
+        can_add_photos=bool(session.get('is_photographer') or session.get('is_admin')),
         r2_url=r2_url,
     )
 
@@ -937,6 +996,19 @@ def viewer_required(f):
     return decorated
 
 
+def photographer_required(f):
+    """Photographer or admin. (A photographer is a viewer who may also add photos.)"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not (session.get('is_photographer') or session.get('is_admin')):
+            if request.path.startswith('/photos/') and request.method == 'POST':
+                return jsonify(error='forbidden'), 403
+            flash(t('login_required_msg'), 'error')
+            return redirect(url_for('login', next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     next_url = request.values.get('next') or url_for('index')
@@ -945,11 +1017,19 @@ def login():
         if ADMIN_PASSWORD and password == ADMIN_PASSWORD:
             session['is_admin'] = True
             session['is_viewer'] = True
+            session.pop('is_photographer', None)
             flash(t('login_success'), 'success')
+            return redirect(request.form.get('next') or url_for('index'))
+        if PHOTOGRAPHER_PASSWORD and password == PHOTOGRAPHER_PASSWORD:
+            session['is_viewer'] = True
+            session['is_photographer'] = True
+            session.pop('is_admin', None)
+            flash(t('login_success_viewer'), 'success')
             return redirect(request.form.get('next') or url_for('index'))
         if VIEWER_PASSWORD and password == VIEWER_PASSWORD:
             session['is_viewer'] = True
             session.pop('is_admin', None)
+            session.pop('is_photographer', None)
             flash(t('login_success_viewer'), 'success')
             return redirect(request.form.get('next') or url_for('index'))
         flash(t('login_failed'), 'error')
@@ -960,6 +1040,7 @@ def login():
 def logout():
     session.pop('is_admin', None)
     session.pop('is_viewer', None)
+    session.pop('is_photographer', None)
     flash(t('logout_success'), 'success')
     return redirect(url_for('login'))
 
@@ -1641,6 +1722,126 @@ def invoice_confirm(batch_id):
     shutil.rmtree(bdir, ignore_errors=True)
     flash(t('invoice_done').format(created=len(chosen), skipped=skipped), 'success')
     return redirect(url_for('index'))
+
+
+# ---------------------------------------------------------------------------
+# Photographer: add photos named after product IDs (photographer or admin).
+# The browser sends one photo per request, so a big batch is never one giant
+# upload; existing photos are never removed.
+# ---------------------------------------------------------------------------
+@app.errorhandler(413)
+def payload_too_large(exc):
+    if request.path.startswith('/photos/'):
+        return jsonify(status='too_big'), 413
+    return exc
+
+
+def _find_item_ids(cur, lowered_ids):
+    """Real catalog IDs whose lower-case form is in lowered_ids."""
+    found = []
+    for i in range(0, len(lowered_ids), 500):
+        chunk = lowered_ids[i:i + 500]
+        cur.execute('SELECT id FROM items WHERE lower(id) IN (' + ','.join(['%s'] * len(chunk)) + ')', chunk)
+        found += [r[0] for r in cur.fetchall()]
+    return found
+
+
+def resolve_photo_files(names):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        return photo_import.resolve_photo_names(names, lambda ids: _find_item_ids(cur, ids))
+    finally:
+        cur.close()
+        conn.close()
+
+
+def attach_photo(item_id, jpeg_bytes, front, index):
+    """Add one prepared photo to a product, keeping every existing photo.
+
+    front=False: goes after the existing photos. front=True: goes in at slot
+    `index` ahead of them (so a batch of 4533_1, 4533_2 keeps that order with
+    the old photos after it). Positions are renumbered and the product's cover
+    photo follows the first one. Returns the product's photo count."""
+    image_key, thumb_key = store_image_bytes(jpeg_bytes, 'jpg', 'image/jpeg')
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM items WHERE id = %s FOR UPDATE', (item_id,))   # serialise per product
+        if not cur.fetchone():
+            raise LookupError(item_id)
+        cur.execute('SELECT id, position FROM item_images WHERE item_id = %s ORDER BY position, date_added', (item_id,))
+        order = [(row[0], row[1]) for row in cur.fetchall()]
+        new_id = uuid.uuid4().hex
+        slot = min(index, len(order)) if front else len(order)
+        order.insert(slot, (new_id, None))
+        cur.execute(
+            'INSERT INTO item_images (id, item_id, image_key, thumb_key, position, date_added) VALUES (%s, %s, %s, %s, %s, %s)',
+            (new_id, item_id, image_key, thumb_key, slot, datetime.now(timezone.utc))
+        )
+        for pos, (img_id, old_pos) in enumerate(order):
+            if img_id != new_id and old_pos != pos:
+                cur.execute('UPDATE item_images SET position = %s WHERE id = %s', (pos, img_id))
+        cur.execute(
+            'SELECT image_key, thumb_key FROM item_images WHERE item_id = %s ORDER BY position, date_added LIMIT 1',
+            (item_id,)
+        )
+        cover = cur.fetchone()
+        cur.execute('UPDATE items SET image_key = %s, thumb_key = %s WHERE id = %s', (cover[0], cover[1], item_id))
+        conn.commit()
+        return len(order)
+    except Exception:
+        conn.rollback()
+        delete_keys(image_key, thumb_key)       # don't leave an orphaned file in R2
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route('/photos')
+@photographer_required
+def photos():
+    return render_template('photos.html')
+
+
+@app.route('/photos/check', methods=['POST'])
+@photographer_required
+def photos_check():
+    names = (request.get_json(silent=True) or {}).get('names')
+    if (not isinstance(names, list) or len(names) > 3000
+            or not all(isinstance(n, str) and len(n) < 300 for n in names)):
+        return jsonify(error='bad_request'), 400
+    return jsonify(results=resolve_photo_files(names))
+
+
+@app.route('/photos/upload', methods=['POST'])
+@photographer_required
+def photos_upload():
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify(status='bad_name'), 400
+    front = request.form.get('front') == '1'
+    try:
+        index = max(0, min(int(request.form.get('index', 0)), 1000))
+    except ValueError:
+        index = 0
+
+    match = resolve_photo_files([f.filename])[0]
+    if match['status'] != 'ok':
+        return jsonify(status=match['status']), 422
+    try:
+        jpeg, _size = photo_import.prepare_photo(f.read())
+    except photo_import.PhotoError:
+        return jsonify(status='invalid_image'), 422
+    try:
+        count = attach_photo(match['id'], jpeg, front, index)
+    except LookupError:                         # product deleted while the batch was running
+        return jsonify(status='unknown_id'), 422
+    except Exception:
+        app.logger.exception('photo upload failed')
+        return jsonify(status='failed'), 500
+    return jsonify(status='ok', id=match['id'], photos=count)
 
 
 @app.route('/manage')

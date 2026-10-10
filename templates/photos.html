@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}{{ t('photos_title') }}{% endblock %}
+{% block content %}
+
+<section class="preview-wrap">
+  <h1>{{ t('photos_title') }}</h1>
+  <p class="form-sub">{{ t('photos_sub') }}</p>
+
+  <div class="drop-zone" id="dropZone">
+    <label class="submit-btn pick-btn" for="fileInput">{{ t('photos_choose') }}</label>
+    <input type="file" id="fileInput" accept="image/*,.jpg,.jpeg,.png,.webp" multiple hidden>
+    <span class="form-sub">{{ t('photos_drop') }}</span>
+  </div>
+  <p class="form-sub">{{ t('photos_resize_note') }}</p>
+
+  <label class="check-line">
+    <input type="checkbox" id="frontBox" checked>
+    <span>{{ t('photos_front') }}</span>
+  </label>
+  <p class="form-sub">{{ t('photos_front_hint') }}</p>
+
+  <div id="listArea" hidden>
+    <div class="summary-row"><span id="summary"></span></div>
+    <div class="table-wrap">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th>{{ t('photos_col_file') }}</th>
+            <th>{{ t('photos_col_product') }}</th>
+            <th>{{ t('photos_col_status') }}</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="progress" id="progress" hidden><div class="progress-bar" id="progressBar"></div></div>
+    <p class="form-sub" id="progressText"></p>
+
+    <div class="confirm-bar">
+      <button type="button" class="submit-btn" id="uploadBtn" disabled></button>
+      <button type="button" class="tool-btn" id="retryBtn" hidden>{{ t('photos_retry') }}</button>
+      <button type="button" class="tool-btn" id="clearBtn">{{ t('photos_clear') }}</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var STR = {
+    ready: {{ t('photos_st_ready')|tojson }},
+    unknown_id: {{ t('photos_st_unknown')|tojson }},
+    bad_name: {{ t('photos_st_badname')|tojson }},
+    bad_type: {{ t('photos_st_badtype')|tojson }},
+    ambiguous: {{ t('photos_st_ambiguous')|tojson }},
+    uploading: {{ t('photos_st_uploading')|tojson }},
+    done: {{ t('photos_st_done')|tojson }},
+    failed: {{ t('photos_st_failed')|tojson }},
+    too_big: {{ t('photos_st_toobig')|tojson }},
+    invalid_image: {{ t('photos_st_invalid')|tojson }},
+    summary: {{ t('photos_summary')|tojson }},
+    uploadBtn: {{ t('photos_upload_btn')|tojson }},
+    progress: {{ t('photos_progress')|tojson }},
+    finished: {{ t('photos_finished')|tojson }}
+  };
+  var CHECK_URL = {{ url_for('photos_check')|tojson }};
+  var UPLOAD_URL = {{ url_for('photos_upload')|tojson }};
+  var CONCURRENCY = 3;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var items = [];          // {file, name, status, id, number, state, msg}
+  var running = false;
+
+  function fill(tpl, vars) {
+    return tpl.replace(/\{(\w+)\}/g, function (_, k) { return vars[k]; });
+  }
+  function keyOf(it) {
+    return [String(it.id || '').toLowerCase(), ('000' + it.number).slice(-3), it.name.toLowerCase()].join('\u0000');
+  }
+
+  function render() {
+    var ordered = items.slice().sort(function (a, b) {
+      var pa = a.status === 'ok' ? 1 : 0, pb = b.status === 'ok' ? 1 : 0;
+      if (pa !== pb) return pa - pb;                 // problems first
+      return keyOf(a) < keyOf(b) ? -1 : keyOf(a) > keyOf(b) ? 1 : 0;
+    });
+    var body = $('rows');
+    body.textContent = '';
+    ordered.forEach(function (it) {
+      var tr = document.createElement('tr');
+      var c1 = document.createElement('td'); c1.textContent = it.name;
+      var c2 = document.createElement('td'); c2.className = 'num';
+      c2.textContent = it.status === 'ok' ? it.id + (it.number ? ' (' + it.number + ')' : '') : '—';
+      var c3 = document.createElement('td');
+      var text, cls = '';
+      if (it.state === 'done') { text = STR.done; cls = 'st-ok'; }
+      else if (it.state === 'uploading') { text = STR.uploading; }
+      else if (it.state === 'failed') { text = STR[it.msg] || STR.failed; cls = 'st-bad'; }
+      else if (it.status === 'ok') { text = STR.ready; }
+      else if (it.status === 'checking') { text = '…'; }
+      else { text = STR[it.status] || STR.failed; cls = 'st-bad'; }
+      c3.textContent = text; c3.className = cls;
+      tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+      body.appendChild(tr);
+    });
+
+    var ready = items.filter(function (i) { return i.status === 'ok' && i.state === 'pending'; }).length;
+    var failed = items.filter(function (i) { return i.state === 'failed'; }).length;
+    var done = items.filter(function (i) { return i.state === 'done'; }).length;
+    var problems = items.filter(function (i) { return i.status !== 'ok' && i.status !== 'checking'; }).length;
+    $('listArea').hidden = items.length === 0;
+    $('summary').textContent = fill(STR.summary, { ready: ready + failed + done, problems: problems });
+    var btn = $('uploadBtn');
+    btn.textContent = fill(STR.uploadBtn, { n: ready });
+    btn.disabled = running || ready === 0;
+    $('retryBtn').hidden = running || failed === 0;
+    $('clearBtn').disabled = running;
+
+    var total = done + failed + ready + items.filter(function (i) { return i.state === 'uploading'; }).length;
+    var started = done + failed > 0 || running;
+    $('progress').hidden = !started;
+    if (started) {
+      $('progressBar').style.width = (total ? Math.round(100 * (done + failed) / total) : 0) + '%';
+      $('progressText').textContent = running
+        ? fill(STR.progress, { done: done + failed, total: total })
+        : fill(STR.finished, { ok: done, failed: failed });
+    } else { $('progressText').textContent = ''; }
+  }
+
+  function addFiles(fileList) {
+    var seen = {};
+    items.forEach(function (i) { seen[i.name + '|' + i.file.size + '|' + i.file.lastModified] = 1; });
+    var fresh = [];
+    Array.prototype.forEach.call(fileList, function (f) {
+      var k = f.name + '|' + f.size + '|' + f.lastModified;
+      if (seen[k]) return;
+      seen[k] = 1;
+      var it = { file: f, name: f.name, status: 'checking', id: null, number: 0, state: 'pending', msg: '' };
+      items.push(it); fresh.push(it);
+    });
+    render();
+    checkChunks(fresh);
+  }
+
+  function checkChunks(fresh) {
+    var chunks = [];
+    for (var i = 0; i < fresh.length; i += 500) chunks.push(fresh.slice(i, i + 500));
+    chunks.reduce(function (p, chunk) {
+      return p.then(function () {
+        return fetch(CHECK_URL, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names: chunk.map(function (c) { return c.name; }) })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          (data.results || []).forEach(function (res, idx) {
+            var it = chunk[idx];
+            it.status = res.status; it.id = res.id; it.number = res.number || 0;
+          });
+        }).catch(function () {
+          chunk.forEach(function (it) { it.status = 'failed'; });
+        }).then(render);
+      });
+    }, Promise.resolve());
+  }
+
+  function uploadOne(it, front) {
+    var group = items.filter(function (o) { return o.status === 'ok' && o.id === it.id; });
+    var k = group.filter(function (o) { return o.state === 'done' && keyOf(o) < keyOf(it); }).length;
+    var fd = new FormData();
+    fd.append('file', it.file, it.name);
+    fd.append('front', front ? '1' : '0');
+    fd.append('index', String(k));
+    it.state = 'uploading'; render();
+    return fetch(UPLOAD_URL, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) {
+          if (r.ok && data.status === 'ok') { it.state = 'done'; return; }
+          it.state = 'failed';
+          it.msg = data.status === 'too_big' || r.status === 413 ? 'too_big'
+                 : data.status === 'invalid_image' ? 'invalid_image'
+                 : data.status === 'unknown_id' ? 'unknown_id' : 'failed';
+        });
+      })
+      .catch(function () { it.state = 'failed'; it.msg = 'failed'; })
+      .then(render);
+  }
+
+  function run() {
+    if (running) return;
+    var front = $('frontBox').checked;
+    var todo = items.filter(function (i) { return i.status === 'ok' && (i.state === 'pending' || i.state === 'failed'); });
+    if (!todo.length) return;
+    // one worker handles one product at a time, its photos in order
+    var groups = {};
+    todo.forEach(function (it) { (groups[it.id] = groups[it.id] || []).push(it); });
+    var queue = Object.keys(groups).map(function (id) {
+      return groups[id].sort(function (a, b) { return keyOf(a) < keyOf(b) ? -1 : 1; });
+    });
+    running = true; render();
+    function worker() {
+      var g = queue.shift();
+      if (!g) return Promise.resolve();
+      return g.reduce(function (p, it) { return p.then(function () { return uploadOne(it, front); }); },
+                      Promise.resolve()).then(worker);
+    }
+    var workers = [];
+    for (var w = 0; w < CONCURRENCY; w++) workers.push(worker());
+    Promise.all(workers).then(function () { running = false; render(); });
+  }
+
+  $('fileInput').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
+  var dz = $('dropZone');
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('is-over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('is-over'); });
+  });
+  dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+  $('uploadBtn').addEventListener('click', run);
+  $('retryBtn').addEventListener('click', run);
+  $('clearBtn').addEventListener('click', function () { if (!running) { items = []; render(); } });
+  window.addEventListener('beforeunload', function (e) { if (running) { e.preventDefault(); e.returnValue = ''; } });
+  render();
+})();
+</script>
+
+{% endblock %}

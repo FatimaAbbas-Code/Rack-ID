@@ -20,6 +20,9 @@
     {% if is_viewer %}
       <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">{{ t('nav_catalog') }}</a>
     {% endif %}
+    {% if can_add_photos %}
+      <a href="{{ url_for('photos') }}" class="{{ 'active' if request.endpoint == 'photos' else '' }}">{{ t('nav_photos') }}</a>
+    {% endif %}
     {% if is_admin %}
       <a href="{{ url_for('upload') }}" class="{{ 'active' if request.endpoint == 'upload' else '' }}">{{ t('nav_add_item') }}</a>
       <a href="{{ url_for('manage') }}" class="{{ 'active' if request.endpoint == 'manage' else '' }}">{{ t('nav_manage') }}</a>
