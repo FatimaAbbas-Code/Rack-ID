@@ -823,3 +823,19 @@ body.rtl .brand { flex-direction: row; }
 .st-bad { color: var(--danger); font-weight: 600; }
 .progress { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 14px; }
 .progress-bar { height: 100%; width: 0; background: var(--gold-dark); transition: width .2s; }
+.photo-manage-grid { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0 20px; }
+.photo-manage-card {
+  position: relative;
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.photo-manage-card img { width: 100%; height: 180px; object-fit: cover; display: block; border-radius: 2px; }
+.photo-manage-card .badge { position: absolute; top: 14px; inset-inline-start: 14px; margin: 0; }
+.photo-manage-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.photo-manage-actions .remove-btn-lg { padding: 7px 12px; font-size: 13px; }

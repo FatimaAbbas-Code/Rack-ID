@@ -68,6 +68,9 @@ nothing important lives on the app server's own disk.
   automatically: JPG/PNG/WEBP in, JPG out, rotated upright, long side capped
   at 2000 px (the original full-size file is not kept). The photographer
   cannot add, edit or delete products, or see Manage/exports.
+  From any product page, **Manage photos** lets the photographer (or an
+  admin) delete a photo or make another one the main photo. A product
+  always keeps at least one photo, so the last one can't be deleted.
 - **Item page** — photo gallery with arrows, thumbnails, keyboard and
   swipe. Buttons to **Print** the item (browser "Save as PDF" works too)
   and to **Save as image** — a shareable product card (photo + ID +

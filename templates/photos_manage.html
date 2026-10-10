@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ t('photos_manage_title') }}{% endblock %}
+{% block content %}
+
+<section class="preview-wrap">
+  <a href="{{ url_for('index') }}" class="back-link">{{ t('back_to_catalog') }}</a>
+  <h1>{{ t('photos_manage_title') }}</h1>
+  <p class="detail-id">ID <span>{{ item.id }}</span>{% if item.name %} · {{ item.name }}{% endif %}</p>
+  <p class="form-sub">{{ t('photos_manage_sub') }}</p>
+
+  <div class="photo-manage-grid">
+    {% for img in images %}
+    <div class="photo-manage-card">
+      <a href="{{ r2_url(img.image_key) }}" target="_blank" rel="noopener">
+        <img src="{{ r2_url(img.thumb_key) }}" alt="" loading="lazy">
+      </a>
+      {% if loop.first %}<span class="badge">{{ t('photo_main_badge') }}</span>{% endif %}
+      <div class="photo-manage-actions">
+        {% if not loop.first %}
+        <form method="post" action="{{ url_for('make_photo_main', item_id=item.id, image_id=img.id) }}" class="inline-form">
+          <button type="submit" class="tool-btn">{{ t('photo_make_main') }}</button>
+        </form>
+        {% endif %}
+        {% if images|length > 1 %}
+        <form method="post" action="{{ url_for('delete_photo', item_id=item.id, image_id=img.id) }}" class="inline-form"
+              onsubmit="return confirm({{ t('photo_delete_confirm')|tojson }});">
+          <button type="submit" class="remove-btn-lg">{{ t('photo_delete') }}</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="confirm-bar">
+    <a class="submit-btn" href="{{ url_for('photos') }}">{{ t('photos_add_more') }}</a>
+  </div>
+</section>
+
+{% endblock %}

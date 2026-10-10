@@ -61,6 +61,7 @@
     <div class="detail-tools">
       <button type="button" class="tool-btn" id="printBtn">{{ t('print_btn') }}</button>
       <a class="tool-btn" href="{{ url_for('item_card', item_id=item.id) }}">{{ t('save_image_btn') }}</a>
+      {% if can_add_photos %}<a class="tool-btn" href="{{ url_for('manage_photos', item_id=item.id) }}">{{ t('photos_manage_btn') }}</a>{% endif %}
     </div>
 
     {% if is_admin %}

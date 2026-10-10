@@ -723,6 +723,19 @@ TRANSLATIONS = {
         'login_success': 'Logged in as admin.',
         'login_success_viewer': 'Logged in.',
         'nav_photos': 'Photos',
+        'photos_manage_btn': 'Manage photos',
+        'photos_manage_title': 'Manage photos',
+        'photos_manage_sub': 'The first photo is the one shown in the catalog. Every product keeps at least one photo.',
+        'photo_make_main': 'Make main',
+        'photo_main_badge': 'Main',
+        'photo_delete': 'Delete',
+        'photo_delete_confirm': 'Delete this photo? This cannot be undone.',
+        'photo_deleted': 'Photo deleted.',
+        'photo_main_set': 'Main photo changed.',
+        'photo_last_cannot_delete': 'A product must keep at least one photo, so the last one cannot be deleted.',
+        'photo_not_found': 'Photo not found.',
+        'photo_action_failed': 'Something went wrong. Nothing was changed — please try again.',
+        'photos_add_more': 'Add photos',
         'photos_title': 'Add product photos',
         'photos_sub': 'Name each photo with the product ID, e.g. 4533.jpg. For several photos of one product add a number: 4533_1.jpg, 4533_2.jpg or 4533(1).jpg, 4533(2).jpg. The photos are added to the product — nothing already there is deleted.',
         'photos_choose': 'Choose photos',
@@ -897,6 +910,19 @@ TRANSLATIONS = {
         'login_success': 'تم تسجيل الدخول كمسؤول.',
         'login_success_viewer': 'تم تسجيل الدخول.',
         'nav_photos': 'الصور',
+        'photos_manage_btn': 'إدارة الصور',
+        'photos_manage_title': 'إدارة الصور',
+        'photos_manage_sub': 'أول صورة هي التي تظهر في الكتالوج. يحتفظ كل منتج بصورة واحدة على الأقل.',
+        'photo_make_main': 'اجعلها الرئيسية',
+        'photo_main_badge': 'الرئيسية',
+        'photo_delete': 'حذف',
+        'photo_delete_confirm': 'حذف هذه الصورة؟ لا يمكن التراجع عن ذلك.',
+        'photo_deleted': 'تم حذف الصورة.',
+        'photo_main_set': 'تم تغيير الصورة الرئيسية.',
+        'photo_last_cannot_delete': 'يجب أن يحتفظ المنتج بصورة واحدة على الأقل، لذلك لا يمكن حذف الأخيرة.',
+        'photo_not_found': 'الصورة غير موجودة.',
+        'photo_action_failed': 'حدث خطأ. لم يتم تغيير أي شيء — الرجاء المحاولة مرة أخرى.',
+        'photos_add_more': 'إضافة صور',
         'photos_title': 'إضافة صور المنتجات',
         'photos_sub': 'سمِّ كل صورة برقم المنتج، مثال: 4533.jpg. إذا كان للمنتج أكثر من صورة أضف رقمًا: 4533_1.jpg و4533_2.jpg أو 4533(1).jpg و4533(2).jpg. تُضاف الصور إلى المنتج ولا يُحذف أي شيء موجود.',
         'photos_choose': 'اختر الصور',
@@ -1842,6 +1868,99 @@ def photos_upload():
         app.logger.exception('photo upload failed')
         return jsonify(status='failed'), 500
     return jsonify(status='ok', id=match['id'], photos=count)
+
+
+def _renumber_images(cur, item_id):
+    """Close gaps in a product's photo order and point its cover at the first."""
+    cur.execute('SELECT id, position, image_key, thumb_key FROM item_images '
+                'WHERE item_id = %s ORDER BY position, date_added', (item_id,))
+    rows = cur.fetchall()
+    for pos, (img_id, old_pos, _, _) in enumerate(rows):
+        if old_pos != pos:
+            cur.execute('UPDATE item_images SET position = %s WHERE id = %s', (pos, img_id))
+    if rows:
+        cur.execute('UPDATE items SET image_key = %s, thumb_key = %s WHERE id = %s',
+                    (rows[0][2], rows[0][3], item_id))
+    return len(rows)
+
+
+@app.route('/item/<item_id>/photos')
+@photographer_required
+def manage_photos(item_id):
+    item, images = get_item_and_images(item_id)
+    if not item:
+        flash(t('item_not_found'), 'error')
+        return redirect(url_for('index'))
+    return render_template('photos_manage.html', item=item, images=images)
+
+
+@app.route('/item/<item_id>/photos/<image_id>/delete', methods=['POST'])
+@photographer_required
+def delete_photo(item_id, image_id):
+    """Remove one photo. A product must always keep at least one."""
+    conn = get_db()
+    cur = conn.cursor()
+    gone = None
+    try:
+        cur.execute('SELECT id FROM items WHERE id = %s FOR UPDATE', (item_id,))
+        if cur.fetchone():
+            cur.execute('SELECT image_key, thumb_key FROM item_images WHERE id = %s AND item_id = %s',
+                        (image_id, item_id))
+            target = cur.fetchone()
+            cur.execute('SELECT count(*) FROM item_images WHERE item_id = %s', (item_id,))
+            total = cur.fetchone()[0]
+            if not target:
+                flash(t('photo_not_found'), 'error')
+            elif total <= 1:
+                flash(t('photo_last_cannot_delete'), 'error')
+            else:
+                cur.execute('DELETE FROM item_images WHERE id = %s', (image_id,))
+                _renumber_images(cur, item_id)
+                conn.commit()
+                gone = target
+                flash(t('photo_deleted'), 'success')
+        else:
+            flash(t('item_not_found'), 'error')
+    except Exception:
+        conn.rollback()
+        app.logger.exception('photo delete failed')
+        flash(t('photo_action_failed'), 'error')
+    finally:
+        cur.close()
+        conn.close()
+    if gone:
+        delete_keys(gone[0], gone[1])          # only after the database change is saved
+    return redirect(url_for('manage_photos', item_id=item_id))
+
+
+@app.route('/item/<item_id>/photos/<image_id>/main', methods=['POST'])
+@photographer_required
+def make_photo_main(item_id, image_id):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM items WHERE id = %s FOR UPDATE', (item_id,))
+        cur.execute('SELECT 1 FROM item_images WHERE id = %s AND item_id = %s', (image_id, item_id))
+        if cur.fetchone():
+            cur.execute('SELECT id FROM item_images WHERE item_id = %s ORDER BY position, date_added', (item_id,))
+            order = [r[0] for r in cur.fetchall()]
+            order.remove(image_id)
+            order.insert(0, image_id)
+            for pos, img_id in enumerate(order):
+                cur.execute('UPDATE item_images SET position = %s WHERE id = %s', (pos, img_id))
+            _renumber_images(cur, item_id)
+            conn.commit()
+            flash(t('photo_main_set'), 'success')
+        else:
+            flash(t('photo_not_found'), 'error')
+    except Exception:
+        conn.rollback()
+        app.logger.exception('make main failed')
+        flash(t('photo_action_failed'), 'error')
+    finally:
+        cur.close()
+        conn.close()
+    return redirect(url_for('manage_photos', item_id=item_id))
 
 
 @app.route('/manage')
